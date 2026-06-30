@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Clinic NobelWorld — Devis &amp; Factures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spectral:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+/* Chargeur robuste : cdnjs (Cloudflare) en priorité, puis replis automatiques.
+   Évite le blocage sur "Chargement…" si un CDN est inaccessible sur le réseau. */
+(function(){
+  var libs=[
+    {g:'React',  u:['https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js',
+                    'https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js',
+                    'https://unpkg.com/react@18/umd/react.production.min.js']},
+    {g:'ReactDOM',u:['https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js',
+                    'https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js',
+                    'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js']},
+    {g:'Babel',  u:['https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js',
+                    'https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js',
+                    'https://unpkg.com/@babel/standalone@7/babel.min.js']}
+  ];
+  function loadOne(lib,done){
+    var i=0;
+    (function attempt(){
+      if(window[lib.g]) return done(true);
+      if(i>=lib.u.length) return done(false);
+      var s=document.createElement('script');
+      s.src=lib.u[i++];
+      s.onload=function(){ done(true); };
+      s.onerror=attempt;
+      document.head.appendChild(s);
+    })();
+  }
+  function chain(k){
+    if(k>=libs.length){ start(); return; }
+    loadOne(libs[k],function(ok){
+      if(!ok){ fail(libs[k].g); return; }
+      chain(k+1);
+    });
+  }
+  function start(){
+    function go(){ try{ Babel.transformScriptTags(); }catch(e){ fail('Babel',e); } }
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',go);
+    else go();
+  }
+  function fail(name,e){
+    console.error('Chargement impossible :',name,e||'');
+    var r=document.getElementById('root');
+    if(r) r.innerHTML='<div style="min-height:100vh;display:grid;place-items:center;text-align:center;font-family:sans-serif;color:#0F1B2D;padding:24px">'+
+      '<div><div style="font-weight:700;font-size:18px;margin-bottom:8px">Impossible de charger l\'application</div>'+
+      '<div style="color:#5B6B7F;max-width:420px;line-height:1.6">Le réseau bloque les bibliothèques nécessaires ('+name+'). '+
+      'Essayez un autre réseau (ex. partage de connexion mobile) ou réessayez dans un instant.</div></div></div>';
+  }
+  chain(0);
+})();
+</script>
+<style>
+:root{
+  --ink:#0F1B2D; --blue:#1C6CB0; --blue-deep:#0E3A5C; --gold:#C9A25A;
+  --paper:#FFFFFF; --surface:#F5F7FA; --surface-2:#EEF2F7; --line:#E4E9F0;
+  --muted:#5B6B7F; --muted-2:#8593A4; --ok:#1B9E6B; --warn:#C9892B; --bad:#C0492F;
+  --radius:14px; --radius-sm:10px; --shadow:0 1px 2px rgba(15,27,45,.04),0 8px 24px rgba(15,27,45,.06);
+  --shadow-lg:0 12px 40px rgba(15,27,45,.14);
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --serif:'Spectral',Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink);background:var(--surface);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+#root{min-height:100vh}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px}
+a{color:var(--blue);text-decoration:none}
+::selection{background:rgba(28,108,176,.18)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- Buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;color:var(--ink);
+  padding:9px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13.5px;transition:.15s;white-space:nowrap}
+.btn:hover{background:var(--surface);border-color:#d3dbe6}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover{background:#175c97;border-color:#175c97}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-danger{color:var(--bad);border-color:#f0d4cd}
+.btn-danger:hover{background:#fdf1ee}
+.btn-sm{padding:6px 10px;font-size:12.5px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+
+/* ---------- Layout ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{width:248px;flex:0 0 248px;background:var(--ink);color:#cdd7e4;display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;padding:18px 14px;gap:4px}
+.brand{display:flex;align-items:center;gap:11px;padding:8px 8px 16px;margin-bottom:6px}
+.brand .mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(150deg,var(--blue),var(--blue-deep));
+  display:grid;place-items:center;color:#fff;font-family:var(--serif);font-weight:700;font-size:19px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.brand .name{font-family:var(--serif);font-weight:600;font-size:16px;color:#fff;line-height:1.1}
+.brand .sub{font-size:11px;color:#7f93ab;letter-spacing:.04em;text-transform:uppercase}
+.nav-section{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:#637a96;margin:14px 10px 6px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:#aebed1;font-weight:500;font-size:13.5px;border:none;background:transparent;width:100%;text-align:left}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav-item.active{background:linear-gradient(120deg,rgba(28,108,176,.32),rgba(28,108,176,.12));color:#fff;box-shadow:inset 0 0 0 1px rgba(28,108,176,.35)}
+.nav-item .ic{width:18px;height:18px;flex:0 0 18px;opacity:.9}
+.nav-spacer{flex:1}
+.nav-user{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.04);margin-top:8px}
+.nav-user .av{width:32px;height:32px;border-radius:50%;background:linear-gradient(140deg,var(--gold),#9c7a35);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+.nav-user .nm{font-size:13px;color:#fff;font-weight:600;line-height:1.1}
+.nav-user .rl{font-size:11px;color:#8ba0b8}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:62px;display:flex;align-items:center;gap:14px;padding:0 26px;background:rgba(255,255,255,.86);
+  backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.topbar h1{font-size:18px;font-weight:600;margin:0;letter-spacing:-.01em}
+.nav-arrow{flex:0 0 auto;padding:6px 8px}
+.topbar .btn[disabled]{opacity:.34;cursor:not-allowed}
+.search{flex:1;max-width:420px;position:relative}
+.search input{width:100%;padding:9px 12px 9px 36px;border:1px solid var(--line);border-radius:10px;background:var(--surface);outline:none}
+.search input:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(28,108,176,.1)}
+.search .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted-2)}
+.content{padding:26px;max-width:1280px;width:100%;margin:0 auto}
+
+/* ---------- Cards / tables ---------- */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-pad{padding:20px}
+.grid{display:grid;gap:16px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi .lab{font-size:12px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:7px}
+.kpi .val{font-size:25px;font-weight:700;margin-top:7px;letter-spacing:-.02em}
+.kpi .sub{font-size:12px;color:var(--muted-2);margin-top:2px}
+.kpi .edge{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--blue)}
+.kpi.gold .edge{background:var(--gold)} .kpi.ok .edge{background:var(--ok)} .kpi.warn .edge{background:var(--warn)}
+
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px}
+.sec-head h2{font-size:16px;font-weight:600;margin:0}
+.sec-head .desc{font-size:12.5px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+tbody td{padding:13px 14px;border-bottom:1px solid var(--surface-2);font-size:13.5px;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.clickable:hover{background:var(--surface);cursor:pointer}
+.t-strong{font-weight:600}
+.muted{color:var(--muted)}
+
+/* ---------- Badges ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600;border:1px solid transparent}
+.badge .dot{width:6px;height:6px;border-radius:50%}
+.b-wait{background:#fff7ec;color:#9a6a16;border-color:#f3e2c4} .b-wait .dot{background:var(--warn)}
+.b-part{background:#eef4fb;color:#1a5894;border-color:#cfe0f1} .b-part .dot{background:var(--blue)}
+.b-paid{background:#ecf8f2;color:#157a52;border-color:#c8ecda} .b-paid .dot{background:var(--ok)}
+.b-cancel{background:#fbeeeb;color:#a23a23;border-color:#f0d2ca} .b-cancel .dot{background:var(--bad)}
+.b-draft{background:var(--surface-2);color:var(--muted);border-color:var(--line)} .b-draft .dot{background:var(--muted-2)}
+
+/* ---------- Forms ---------- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.field .hint{font-size:11.5px;color:var(--muted-2);font-weight:400;margin-left:4px}
+.input,select.input,textarea.input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;outline:none;transition:.15s;color:var(--ink)}
+.input:focus,textarea.input:focus,select.input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(28,108,176,.1)}
+textarea.input{resize:vertical;min-height:74px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+
+/* ---------- Modal / drawer ---------- */
+.overlay{position:fixed;inset:0;background:rgba(15,27,45,.42);backdrop-filter:blur(2px);z-index:60;display:flex;justify-content:flex-end;animation:fade .18s}
+.drawer{width:min(720px,100%);background:#fff;height:100%;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slide .22s cubic-bezier(.2,.8,.2,1)}
+.modal-center{align-items:center;justify-content:center}
+.modal{width:min(560px,94%);background:#fff;border-radius:var(--radius);box-shadow:var(--shadow-lg);animation:pop .18s;max-height:90vh;overflow:auto}
+.drawer-head{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;z-index:2}
+.drawer-head h3{margin:0;font-size:17px;font-weight:600}
+.drawer-body{padding:22px}
+.drawer-foot{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:14px 22px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;row-gap:10px}
+.docnav{display:flex;align-items:center;gap:6px;margin-right:auto}
+.docnav-c{font-size:12.5px;color:var(--muted);font-weight:600;min-width:90px;text-align:center;white-space:nowrap}
+.docnav .btn[disabled]{opacity:.36;cursor:not-allowed}
+@keyframes fade{from{opacity:0}} @keyframes slide{from{transform:translateX(30px);opacity:.6}}
+@keyframes pop{from{transform:scale(.97);opacity:0}}
+
+/* ---------- Steps ---------- */
+.steps{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:99px;background:var(--surface);color:var(--muted);font-size:12.5px;font-weight:600;border:1px solid var(--line)}
+.step.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.step.done{background:#eaf3ec;color:var(--ok);border-color:#cfe9d8}
+.step .n{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.25);display:grid;place-items:center;font-size:11px}
+
+/* ---------- Toast / empty ---------- */
+.toasts{position:fixed;bottom:22px;right:22px;z-index:90;display:flex;flex-direction:column;gap:10px}
+.toast{background:var(--ink);color:#fff;padding:12px 16px;border-radius:11px;box-shadow:var(--shadow-lg);font-size:13.5px;display:flex;align-items:center;gap:10px;animation:pop .2s;max-width:340px}
+.toast .bar{width:3px;align-self:stretch;border-radius:2px;background:var(--blue)}
+.toast.ok .bar{background:var(--ok)} .toast.err .bar{background:var(--bad)}
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty .ic{width:46px;height:46px;color:var(--muted-2);margin-bottom:12px}
+.empty h3{margin:0 0 5px;color:var(--ink);font-weight:600}
+
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.toolbar .sp{flex:1}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:3px}
+.seg button{border:none;background:transparent;padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--line);font-size:12.5px;font-weight:500}
+.chip button{border:none;background:transparent;color:var(--muted-2);padding:0;display:grid;place-items:center}
+
+/* ---------- Login ---------- */
+.login{min-height:100vh;display:grid;grid-template-columns:1.1fr 1fr}
+.login .left{background:linear-gradient(155deg,var(--blue-deep),var(--ink));color:#fff;padding:54px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.login .left::after{content:"";position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(28,108,176,.5),transparent 70%);right:-120px;top:-80px}
+.login .left::before{content:"";position:absolute;width:1px;height:60%;background:linear-gradient(var(--gold),transparent);left:54px;bottom:0;opacity:.4}
+.login .lmark{display:flex;align-items:center;gap:13px;position:relative;z-index:2}
+.login .lmark .mk{width:46px;height:46px;border-radius:12px;background:linear-gradient(150deg,var(--blue),var(--blue-deep));display:grid;place-items:center;font-family:var(--serif);font-weight:700;font-size:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.login .hero{position:relative;z-index:2}
+.login .hero h2{font-family:var(--serif);font-size:34px;font-weight:600;line-height:1.18;margin:0 0 14px;letter-spacing:-.01em}
+.login .hero p{color:#b3c4d8;font-size:15px;max-width:380px;line-height:1.6}
+.login .feat{display:flex;gap:22px;position:relative;z-index:2;color:#9fb3cb;font-size:13px}
+.login .right{display:grid;place-items:center;padding:40px;background:#fff}
+.login .form{width:min(360px,100%)}
+.login .form h3{font-size:22px;font-weight:600;margin:0 0 5px}
+.login .form .lead{color:var(--muted);margin:0 0 26px}
+
+@media (max-width:980px){
+  .login{grid-template-columns:1fr} .login .left{display:none}
+  .sidebar{position:fixed;left:0;top:0;z-index:80;transform:translateX(-100%);transition:.22s;box-shadow:var(--shadow-lg)}
+  .sidebar.open{transform:none}
+  .row2,.row3{grid-template-columns:1fr}
+  .content{padding:18px}
+  .menu-btn{display:inline-grid !important}
+  .editor-top{flex:0 0 auto;height:auto;min-height:56px;flex-wrap:wrap;row-gap:8px;padding:8px 12px}
+  .editor-top h3{flex:1 1 130px;font-size:14px}
+  .editor-nav{order:3;flex:1 1 100%;justify-content:center}
+  .editor-main{flex-direction:column}
+  .editor-side{width:100%;flex:0 0 auto;border-left:none;border-top:1px solid var(--line)}
+  .editor-doc{padding:12px}
+  .doc{width:100% !important;min-width:0;min-height:auto}
+  .doc .dhead{padding:24px 20px 16px;flex-wrap:wrap;gap:14px}
+  .doc .drule{margin:0 20px}
+  .doc .dbody{padding:18px 20px 64px}
+  .doc .pinfo{grid-template-columns:1fr}
+  .doc .parties{flex-direction:column;gap:16px}
+  .doc .parties>div{text-align:left !important}
+  .doc .twocol{flex-direction:column;gap:18px}
+  .doc .docfoot{position:static;margin-top:24px}
+}
+.menu-btn{display:none;place-items:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:#fff}
+.scrim{display:none;position:fixed;inset:0;background:rgba(15,27,45,.4);z-index:70}
+.scrim.show{display:block}
+
+/* ---------- Document / PDF (premium clair) ---------- */
+.doc-wrap{background:#aeb9c6;padding:28px;border-radius:var(--radius);overflow:auto}
+.doc{width:794px;margin:0 auto;display:flex;flex-direction:column;gap:22px;font-size:12px;line-height:1.5;color:#26303f;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.doc .page{position:relative;display:flex;flex-direction:column;min-height:1123px;background:#fff;box-shadow:0 14px 50px rgba(0,0,0,.22)}
+.doc .pagefoot{display:flex;justify-content:space-between;align-items:center;padding:12px 32px;border-top:1px solid var(--line);font-size:10.5px;color:var(--muted-2);letter-spacing:.02em}
+.doc .cont{display:flex;justify-content:space-between;align-items:baseline;padding:24px 32px 14px;border-bottom:1px solid var(--line)}
+.doc .cont .cnm{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--ink)}
+.doc .cont .cno{font-size:11px;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+.doc .endblock{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:18px 32px;color:var(--muted-2);font-size:10.5px;line-height:1.55}
+.doc .endblock .qr{width:66px;height:66px;opacity:.92;flex:0 0 auto}
+.doc .notesbox{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:15px 18px;font-size:12px;line-height:1.95;color:var(--muted);white-space:pre-wrap}
+.doc .dbody2{padding-top:22px}
+.doc .dhead{display:flex;justify-content:space-between;align-items:flex-start;padding:40px 32px 20px;gap:26px}
+.doc .dhead .co .logo{height:120px;width:auto;max-width:340px;object-fit:contain;display:block;margin-bottom:14px}
+.doc .dhead .co .nm{font-family:var(--serif);font-size:23px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+.doc .dhead .co .tag{font-size:11.5px;color:var(--blue);letter-spacing:.03em;line-height:1.5;margin-top:6px}
+.doc .dhead .co .ad{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.8}
+.doc .dhead .co .adv{margin-top:14px;padding:11px 15px;border-left:3px solid var(--gold);background:#fafbfc;border-radius:0 8px 8px 0;line-height:1.6;max-width:320px}
+.doc .dhead .co .adv .advt{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:4px}
+.doc .dhead .co .adv .advn{font-size:13px;font-weight:700;color:var(--ink)}
+.doc .dhead .co .adv .advf{font-size:12px;color:var(--muted)}
+.doc .dhead .co .adv .advp{font-size:12px;color:var(--ink);margin-top:3px;letter-spacing:.01em}
+.doc .dhead .meta{text-align:right;flex:0 0 auto}
+.doc .dhead .meta .ty{font-size:13px;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);font-weight:700}
+.doc .dhead .meta .no{font-family:var(--serif);font-size:28px;font-weight:700;color:var(--ink);margin-top:7px;letter-spacing:.01em}
+.doc .dhead .meta .dt{font-size:12px;color:var(--muted);margin-top:12px;line-height:2}
+.doc .dhead .meta .dt b{color:var(--ink)}
+.doc .drule{height:2px;margin:0 32px;background:linear-gradient(90deg,var(--gold),rgba(201,162,90,.12))}
+.doc .dbody{padding:26px 32px 18px}
+.doc .seclbl{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700;margin:0 0 11px}
+.doc .parties{display:flex;justify-content:space-between;gap:34px;margin-bottom:22px}
+.doc .pblock{font-size:12px;line-height:1.8;color:var(--muted)}
+.doc .pblock .big{font-size:16px;font-weight:700;color:var(--ink);font-family:var(--serif)}
+.doc .info{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:24px;background:#fbfcfd}
+.doc .info .cell{padding:14px 16px;border-right:1px solid var(--line)}
+.doc .info .cell:last-child{border-right:none}
+.doc .info .cell .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2);font-weight:700}
+.doc .info .cell .v{font-size:13.5px;font-weight:600;color:var(--ink);margin-top:6px}
+.doc .interv{margin-bottom:24px}
+.doc .interv .chips{display:flex;flex-wrap:wrap;gap:8px}
+.doc .interv .ch{background:#eef3f8;border:1px solid #dbe6f1;color:var(--blue-deep);border-radius:7px;padding:6px 13px;font-size:12.5px;font-weight:600}
+.doc table.items{width:100%;border-collapse:collapse;margin:4px 0}
+.doc table.items th{background:var(--ink);color:#fff;text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:13px 16px;font-weight:600}
+.doc table.items th:first-child{border-radius:8px 0 0 8px}.doc table.items th:last-child{border-radius:0 8px 8px 0}
+.doc table.items th.r,.doc table.items td.r{text-align:right;white-space:nowrap}
+.doc table.items td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.6;vertical-align:top}
+.doc table.items tr:nth-child(even) td{background:#fafbfc}
+.doc table.items td .opt{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+.doc .totals{display:flex;justify-content:flex-end;margin-top:20px}
+.doc .totals .box{width:360px}
+.doc .totals .ln{display:flex;justify-content:space-between;padding:8px 2px;font-size:13px;color:var(--muted)}
+.doc .totals .ln .v{color:var(--ink);font-weight:600}
+.doc .totals .ln.acc .v{color:var(--blue)}
+.doc .totals .grand{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:#fff;border-radius:11px;padding:15px 20px;margin-top:12px;font-family:var(--serif)}
+.doc .totals .grand .lab{font-size:14px;letter-spacing:.04em}
+.doc .totals .grand .val{font-size:22px;font-weight:700}
+.doc .twocol{display:flex;gap:34px;margin-top:30px}
+.doc .twocol>div{flex:1}
+.doc h4.doch{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);border-bottom:1px solid var(--line);padding-bottom:8px;margin:0 0 12px;font-weight:700}
+.doc ul.inc{list-style:none;padding:0;margin:0;font-size:12px;line-height:2.15}
+.doc ul.inc li{padding-left:21px;position:relative;color:#36414f}
+.doc ul.inc li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:700}
+.doc ul.exc li::before{content:"✕";color:#c0492f;font-size:11px;font-weight:700}
+.doc .pay{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:16px 20px;margin-top:28px;font-size:12px;line-height:1.9;color:var(--muted)}
+.doc .pay b{color:var(--blue-deep)}
+.doc .pay .iban{font-weight:700;letter-spacing:.03em;color:var(--ink)}
+.doc .important{border-left:3px solid var(--gold);background:#fcf9f2;border-radius:0 11px 11px 0;padding:15px 20px;margin-top:16px;font-size:12px;line-height:2;color:#5a4a2a}
+.doc .important b{color:#7a5d1f;display:block;margin-bottom:6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.doc .docfoot{position:absolute;bottom:0;left:0;right:0;padding:12px 32px;border-top:1px solid var(--line);font-size:10.5px;color:var(--muted-2);display:flex;justify-content:space-between;align-items:center;background:#fff}
+.doc .docfoot .qr{width:48px;height:48px;opacity:.92}
+.doc-actions{display:flex;gap:10px;justify-content:center;margin-bottom:16px;flex-wrap:wrap}
+
+.doc .doctitle{text-align:center;font-family:var(--serif);font-size:26px;font-weight:700;color:var(--ink);letter-spacing:.04em;margin:6px 0 24px;text-transform:uppercase}
+.doc .doctitle .sub{display:block;font-family:var(--sans);font-size:11px;letter-spacing:.1em;color:var(--gold);font-weight:700;margin-top:8px}
+.doc .pinfo{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:26px}
+.doc .pinfo .c{background:#fbfcfd;padding:13px 16px;display:flex;flex-direction:column;gap:4px}
+.doc .pinfo .k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2);font-weight:700}
+.doc .pinfo .val{font-size:13.5px;font-weight:600;color:var(--ink)}
+.doc .sec{margin-top:28px}
+.doc table.acttab{width:100%;border-collapse:collapse;margin:4px 0;table-layout:fixed}
+.doc table.acttab th{background:var(--ink);color:#fff;text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:12px 16px;font-weight:600}
+.doc table.acttab th:first-child{width:32%;border-radius:8px 0 0 8px}
+.doc table.acttab th:nth-child(2){width:50%}
+.doc table.acttab th:last-child{border-radius:0 8px 8px 0}
+.doc table.acttab td{padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.65;vertical-align:top;word-wrap:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
+.doc table.acttab td.act{font-weight:700;color:var(--ink)}
+.doc table.acttab tr:nth-child(even) td{background:#fafbfc}
+.doc .optrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.doc .optrow:last-child{border-bottom:none}
+.doc .optrow .lbl{flex:1}
+.doc .optrow .price{font-weight:700;color:var(--blue-deep);white-space:nowrap}
+.doc .paybox{background:#f7f9fb;border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-top:6px}
+.doc .paybox .l{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;color:var(--muted)}
+.doc .paybox .l .v{font-weight:600;color:var(--ink)}
+.doc .paybox .l.acc .v{color:var(--blue)}
+.doc .paybox .l.big{border-top:2px solid var(--ink);margin-top:9px;padding-top:15px;font-size:16px;font-weight:700;color:var(--ink);font-family:var(--serif)}
+.doc .paybox .l.big .v{color:var(--blue-deep);font-size:23px}
+.doc .paybox .note{font-size:12px;color:var(--muted);margin-top:13px;line-height:1.85;border-top:1px dashed var(--line);padding-top:13px}
+.doc ul.implist{list-style:none;padding:0;margin:0;font-size:12px;line-height:2.1}
+.doc ul.implist li{padding-left:19px;position:relative;color:#36414f}
+.doc ul.implist li::before{content:"•";position:absolute;left:3px;color:var(--gold);font-weight:700}
+.doc .incrow{display:flex;align-items:flex-start;gap:9px;padding:3px 0}
+.doc .incrow .bul{color:var(--ok);font-weight:700;margin-top:2px;flex:0 0 auto}
+.doc .incrow .bul.ex{color:#c0492f}
+.doc .incrow .draghand{cursor:grab;color:var(--muted-2);font-size:12px;line-height:1.5;flex:0 0 auto;user-select:none}
+
+/* ---------- Champs éditables ---------- */
+.ed{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:6px;padding:1px 6px;margin:-1px -2px;outline:none;transition:.1s;max-width:100%}
+.doc-edit .ed{background:rgba(28,108,176,.05)}
+.ed:hover{background:#eaf2fb;border-color:#cfe0f1}
+.ed:focus{background:#fff;border-color:var(--blue);box-shadow:0 0 0 3px rgba(28,108,176,.12)}
+.ed-m{display:block;width:100%;resize:none;overflow:hidden;line-height:inherit;font:inherit}
+select.ed{font:inherit;font-weight:600;cursor:pointer}
+input.ed[type=date]{font:inherit}
+.delrow{border:none;background:#fbeeeb;color:#c0492f;width:22px;height:22px;border-radius:6px;display:inline-grid;place-items:center;cursor:pointer;opacity:0;transition:.1s;flex:0 0 auto}
+.acttab tr:hover .delrow,.optrow:hover .delrow,.incrow:hover .delrow{opacity:1}
+.addrow{border:1px dashed #cfe0f1;background:#fff;color:var(--blue);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin-top:9px;display:inline-flex;align-items:center;gap:6px}
+.addrow:hover{background:#f0f5fb;border-color:var(--blue)}
+
+/* ---------- Éditeur plein écran ---------- */
+.editor-overlay{position:fixed;inset:0;background:rgba(15,27,45,.5);z-index:70;display:flex;animation:fade .18s}
+.editor{margin:auto;width:100%;height:100%;background:var(--surface);display:flex;flex-direction:column}
+.editor-top{height:60px;flex:0 0 60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 16px;z-index:5}
+.editor-top h3{margin:0;font-size:15.5px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.editor-nav{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.editor-nav-c{font-size:12px;color:var(--muted);font-weight:600;min-width:84px;text-align:center;white-space:nowrap}
+.editor-nav .btn[disabled]{opacity:.36;cursor:not-allowed}
+.editor-main{flex:1;display:flex;min-height:0}
+.editor-doc{flex:1;overflow:auto;padding:24px;background:#aeb9c6}
+.editor-side{width:330px;flex:0 0 330px;background:#fff;border-left:1px solid var(--line);overflow-y:auto;padding:18px}
+.editor-side h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px;font-weight:700}
+.editor-side h4:first-child{margin-top:0}
+.side-actions{display:flex;flex-direction:column;gap:8px}
+.reste-box{background:var(--ink);color:#fff;border-radius:11px;padding:14px 16px;margin-top:10px}
+.reste-box .l{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#c2cee0}
+.reste-box .l .v{color:#fff;font-weight:600}
+.reste-box .l.big{font-size:17px;font-weight:700;color:#fff;border-top:1px solid rgba(255,255,255,.16);margin-top:6px;padding-top:10px;font-family:var(--serif)}
+
+@media print{
+  body *{visibility:hidden}
+  #print-area,#print-area *{visibility:visible}
+  #print-area{position:absolute;inset:0;margin:0;padding:0}
+  .doc{width:100%;gap:0;display:block}
+  .doc-wrap{background:#fff;padding:0}
+  .doc,.doc *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  .ed,select.ed,input.ed{border-color:transparent !important;background:transparent !important;box-shadow:none !important;appearance:none;-webkit-appearance:none}
+  .delrow,.addrow,.draghand{display:none !important}
+  .doc .page{box-shadow:none;width:100%;min-height:296mm;box-sizing:border-box;margin:0;display:flex;flex-direction:column}
+  .doc .page.page-break{break-before:page;page-break-before:always}
+  /* aération conservée : aucun bloc coupé entre deux pages */
+  .doc .pinfo,.doc .info,.doc .paybox,.doc .sec,.doc .important,.doc .notesbox,
+  .doc .optrow,.doc table.acttab tr,.doc table.items tr,.doc .incrow,.doc .endblock{break-inside:avoid;page-break-inside:avoid}
+  @page{size:A4 portrait;margin:0}
+}
+.spin{width:18px;height:18px;border:2.5px solid rgba(28,108,176,.25);border-top-color:var(--blue);border-radius:50%;animation:rot .7s linear infinite;display:inline-block}
+@keyframes rot{to{transform:rotate(360deg)}}
+.center-load{min-height:100vh;display:grid;place-items:center;gap:14px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:120px;padding:8px 0}
+.bars .bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+.bars .b{width:60%;background:linear-gradient(var(--blue),var(--blue-deep));border-radius:5px 5px 0 0;min-height:3px;transition:.4s}
+.bars .bl{font-size:10.5px;color:var(--muted)}
+.uav{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto}
+.uav.ph{display:grid;place-items:center;background:var(--blue);color:#fff;font-size:13px;font-weight:700}
+.uav.lg{width:64px;height:64px;font-size:20px}
+.permrow{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px;color:var(--ink);cursor:pointer}
+.permrow input{width:16px;height:16px;accent-color:var(--blue)}
+</style>
+</head>
+<body>
+<div id="root"><div class="center-load"><span class="spin"></span><span class="muted">Chargement…</span></div></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef,useMemo,useCallback,createContext,useContext}=React;
+
+/* =========================================================================
+   CONFIGURATION
+   ------------------------------------------------------------------------- */
+const CONFIG = {
+  // 👉 Collez ici l'URL de votre Web App Apps Script (déploiement).
+  //    Tant que ce champ est vide, l'app fonctionne en mode LOCAL (navigateur)
+  //    pour que vous puissiez tout tester immédiatement.
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbz6r0_P-8CbMUQXS7ZYFpVZmNzDBE3e5vmMnr17iwB_JkOR69tYqGrGWYpGjnHWFQaV/exec",
+  POLL_MS: 15000,          // synchronisation auto entre l'équipe
+  CACHE_PREFIX: "cnw_",    // clés de cache locales (Clinic NobelWorld)
+};
+
+/* =========================================================================
+   UTILITAIRES
+   ------------------------------------------------------------------------- */
+const uid = (p='id') => p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const todayISO = () => new Date().toISOString().slice(0,10);
+const addDays = (iso,n) => { const d=new Date(iso); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+
+// Évite le bug Google Sheets « 1899 » sur dates/heures
+function normalizeDate(v){
+  if(!v) return "";
+  if(typeof v==='string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  const d=new Date(v); return isNaN(d)? String(v): d.toISOString().slice(0,10);
+}
+function fmtDate(iso){
+  if(!iso) return "—";
+  const d=new Date(normalizeDate(iso));
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});
+}
+function money(n,cur='€'){
+  const v=Number(n||0);
+  return new Intl.NumberFormat('fr-FR',{minimumFractionDigits:0,maximumFractionDigits:2}).format(v)+' '+cur;
+}
+function initials(name=''){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?'; }
+async function sha256(text){
+  const data=new TextEncoder().encode(text);
+  const buf=await crypto.subtle.digest('SHA-256',data);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// cache local sûr (fallback mémoire si localStorage bloqué — ex. preview)
+const mem={};
+const store={
+  get(k){ try{const v=localStorage.getItem(CONFIG.CACHE_PREFIX+k);return v?JSON.parse(v):null;}catch(e){return mem[k]??null;} },
+  set(k,v){ try{localStorage.setItem(CONFIG.CACHE_PREFIX+k,JSON.stringify(v));}catch(e){mem[k]=v;} },
+  del(k){ try{localStorage.removeItem(CONFIG.CACHE_PREFIX+k);}catch(e){delete mem[k];} },
+};
+
+/* =========================================================================
+   PERMISSIONS (RBAC)
+   ------------------------------------------------------------------------- */
+const ROLES={
+  pdg:{label:'PDG',can:{all:true}},
+  commerciale:{label:'Commerciale',can:{
+    devisCreate:true, devisEditOwn:true, devisSend:true, devisDuplicate:true,
+    patientCreate:true, factureCreate:true, viewOwnStats:true, pdf:true, paymentView:true,
+    catalogManage:true,
+  }},
+  coordinatrice:{label:'Coordinatrice médicale',can:{
+    devisViewAll:true, devisEditAll:true, patientViewAll:true, factureCreate:true,
+    paymentEdit:true, scheduleEdit:true, pdf:true,
+    catalogManage:true,
+  }},
+};
+function can(user,perm){
+  if(!user) return false;
+  if(user.perms && Object.prototype.hasOwnProperty.call(user.perms,perm)) return !!user.perms[perm];
+  const r=ROLES[user.role]; if(!r) return false;
+  return r.can.all===true || !!r.can[perm];
+}
+function isAdmin(user){ return !!user && (user.role==='pdg' || can(user,'usersManage')); }
+function userLabel(u){ if(!u) return '—'; const n=`${(u.prenom||'').trim()} ${(u.nom||'').trim()}`.trim(); return n||u.email||'—'; }
+function fmtPhone(t){ if(!t) return ''; let d=(''+t).replace(/[^\d]/g,''); if(!d) return t;
+  if(d.startsWith('0')) d=d.slice(1); if(d.startsWith('90')) d=d.slice(2);
+  if(d.length===10) return '+90 '+d.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/,'$1 $2 $3 $4');
+  return (''+t).trim().startsWith('+')?(''+t).trim():'+'+d; }
+function arrMove(arr,from,to){ const a=[...(arr||[])]; if(from<0||from>=a.length||to<0||to>=a.length) return a; const [x]=a.splice(from,1); a.splice(to,0,x); return a; }
+function fmtDateTime(v){ if(!v) return '—'; const d=new Date(v); if(isNaN(d)) return '—';
+  return d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+// Redimensionne une image (photo de profil) en dataURL compacte
+function resizeImage(file,max=160){ return new Promise((res,rej)=>{ const r=new FileReader();
+  r.onload=()=>{ const img=new Image(); img.onload=()=>{ const sc=Math.min(1,max/Math.max(img.width,img.height));
+    const c=document.createElement('canvas'); c.width=Math.round(img.width*sc); c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',0.82)); };
+    img.onerror=rej; img.src=r.result; }; r.onerror=rej; r.readAsDataURL(file); }); }
+
+// Catalogue des permissions ajustables (libellés FR -> clés internes)
+const PERMS=[
+  {g:'Devis',items:[['devisCreate','Créer des devis'],['devisEditOwn','Modifier ses propres devis'],
+    ['devisEditAll','Modifier tous les devis'],['devisViewAll','Voir tous les devis'],['devisDuplicate','Dupliquer un devis']]},
+  {g:'Factures & paiements',items:[['factureCreate','Créer des factures'],['paymentView','Consulter les paiements'],
+    ['paymentEdit','Enregistrer des paiements']]},
+  {g:'Patients & suivi',items:[['patientCreate','Créer des patients'],['patientViewAll','Voir tous les patients'],
+    ['scheduleEdit',"Gérer les dates d'intervention"]]},
+  {g:'Autres',items:[['pdf','Générer les PDF'],['viewOwnStats','Voir ses statistiques'],
+    ['catalogManage','Gérer modèles & options'],['usersManage','Gérer les utilisateurs (admin)']]},
+];
+function roleDefaultPerms(role){ const m={}; PERMS.forEach(grp=>grp.items.forEach(([k])=>{ m[k]=can({role},k); })); return m; }
+
+/* =========================================================================
+   DONNÉES PAR DÉFAUT (mode local / 1ère initialisation)
+   ------------------------------------------------------------------------- */
+const DEFAULT_SETTINGS={
+  company:"Clinic NobelWorld", tagline:"Tourisme médical · Istanbul",
+  address:"Avrasya Hastanesi — Istanbul, Türkiye", phone:"+90 ___ ___ __ __",
+  whatsapp:"+90 ___ ___ __ __", email:"contact@clinicnobel.world", website:"www.clinicnobel.world",
+  iban:"TR00 0000 0000 0000 0000 0000 00", bic:"XXXXXXXX", vat:"",
+  logo:"", currency:"€",
+  docTitle:"DEVIS MÉDICAL PREMIUM",
+  cgv:"Le présent devis est valable 30 jours. Un acompte confirme la réservation de la date opératoire. Le solde est réglé avant l'intervention. Les tarifs incluent uniquement les prestations listées.",
+  important:"Le patient s'engage à fournir un bilan médical complet et à signaler tout traitement en cours. Les dates d'intervention sont confirmées après réception de l'acompte. En cas d'annulation à moins de 7 jours, l'acompte reste acquis. Les résultats peuvent varier d'un patient à l'autre ; aucun résultat n'est garanti. Un suivi post-opératoire est requis.",
+  legal:"Clinic NobelWorld — Tourisme médical. Document non contractuel à valeur d'estimation.",
+};
+const DEFAULT_LOGO="data:image/png;base64,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";
+const SEED_MODELES=[
+  {id:'m_bbl',nom:'SAFE BBL',categorie:'Chirurgie esthétique',prixBase:4500,description:"Brazilian Butt Lift (lipofilling fessier) avec liposuccion 360° et réinjection de graisse autologue selon protocole de sécurité.",inc:["Bilan préopératoire","Intervention en clinique JCI","2 nuits d'hospitalisation","Corset médical + BBL Pillow","Suivi post-opératoire"],exc:["Vols internationaux","Nuits d'hôtel supplémentaires","Liposuccion de zones additionnelles"]},
+  {id:'m_mommy',nom:'Mommy Makeover',categorie:'Chirurgie esthétique',prixBase:6900,description:"Combinaison abdominoplastie + chirurgie mammaire pour restaurer la silhouette post-grossesse.",inc:["Bilan préopératoire complet","Intervention","3 nuits d'hospitalisation","Bas de contention","Suivi post-opératoire"],exc:["Vols internationaux","Lifting des bras / cuisses"]},
+  {id:'m_vaser',nom:'Liposuccion VASER HD',categorie:'Chirurgie esthétique',prixBase:3800,description:"Liposuccion haute définition VASER pour un remodelage athlétique des contours.",inc:["Bilan préopératoire","Intervention VASER","1 nuit d'hospitalisation","Corset médical","Massages lymphatiques (2 séances)"],exc:["Lipofilling","Zones supplémentaires"]},
+  {id:'m_abdo',nom:'Abdominoplastie',categorie:'Chirurgie esthétique',prixBase:4200,description:"Abdominoplastie avec remise en tension de la paroi et retrait de l'excès cutané.",inc:["Bilan préopératoire","Intervention","2 nuits d'hospitalisation","Bas de contention"],exc:["Liposuccion étendue"]},
+  {id:'m_rhino',nom:'Rhinoplastie',categorie:'Chirurgie esthétique',prixBase:2900,description:"Rhinoplastie fonctionnelle et esthétique par chirurgien spécialisé.",inc:["Bilan préopératoire","Intervention","1 nuit d'hospitalisation","Attelle nasale"],exc:["Septoplastie complexe"]},
+  {id:'m_hollywood',nom:'Hollywood Smile',categorie:'Chirurgie dentaire',prixBase:3500,description:"Facettes en céramique E-max sur l'arcade visible pour un sourire harmonieux.",inc:["Consultation & empreintes","Pose des facettes (jusqu'à 20)","Photos avant/après"],exc:["Soins parodontaux préalables","Traitements de gencive"]},
+  {id:'m_allon4',nom:'All-on-4',categorie:'Chirurgie dentaire',prixBase:4800,description:"Réhabilitation complète d'une arcade sur 4 implants avec prothèse fixe.",inc:["Scanner 3D","4 implants","Prothèse provisoire","Prothèse définitive"],exc:["Greffe osseuse","Sinus lift"]},
+  {id:'m_greffe',nom:'Greffe capillaire',categorie:'Greffe capillaire',prixBase:1900,description:"Greffe de cheveux FUE/DHI, jusqu'à 4000 greffons selon la zone à traiter.",inc:["Analyse capillaire","Extraction & implantation","Kit post-greffe","PRP (1 séance)"],exc:["Greffe barbe / sourcils"]},
+];
+const SEED_OPTIONS=[
+  {id:'o1',nom:'Hôtel 4★ (par nuit)',prix:90},{id:'o2',nom:'Transferts VIP',prix:120},
+  {id:'o3',nom:'Accompagnant',prix:250},{id:'o4',nom:'Corset médical',prix:60},
+  {id:'o5',nom:'Bas de contention',prix:45},{id:'o6',nom:'BBL Pillow',prix:35},
+  {id:'o7',nom:'Massage lymphatique (séance)',prix:40},{id:'o8',nom:'Liposuccion supplémentaire (zone)',prix:600},
+  {id:'o9',nom:'Lipofilling',prix:700},
+];
+const SEED_USERS=[
+  {id:'u_veys',nom:'Veys Turan',email:'veys',role:'pdg'},
+  {id:'u_andrea',nom:'Andréa',email:'andrea',role:'commerciale'},
+  {id:'u_ceyda',nom:'Ceyda',email:'ceyda',role:'coordinatrice'},
+];
+// Mot de passe temporaire local : "nobel2026" (à changer). En prod, géré côté Apps Script.
+const LOCAL_DEFAULT_PWD='nobel2026';
+
+/* =========================================================================
+   COUCHE API — Apps Script si configuré, sinon stockage LOCAL
+   Contrat d'actions identique des deux côtés :
+   login / bootstrap / save / remove / nextNumber
+   ------------------------------------------------------------------------- */
+const COLLECTIONS=['patients','devis','factures','paiements','modeles','options','historique','utilisateurs'];
+
+async function localBootstrap(){
+  if(!store.get('init')){
+    store.set('parametres',DEFAULT_SETTINGS);
+    store.set('modeles',SEED_MODELES);
+    store.set('options',SEED_OPTIONS);
+    store.set('utilisateurs',[]); // aucun utilisateur de démonstration — admin créé au 1er démarrage
+    store.set('patients',[]); store.set('devis',[]); store.set('factures',[]);
+    store.set('paiements',[]); store.set('historique',[]);
+    store.set('seq',{devis:0,facture:0});
+    store.set('init',true);
+  }
+  const data={parametres:store.get('parametres')||DEFAULT_SETTINGS};
+  COLLECTIONS.forEach(c=>{ if(c!=='utilisateurs') data[c]=store.get(c)||[]; });
+  data.utilisateurs=(store.get('utilisateurs')||[]).map(({pwd,salt,...u})=>u);
+  return data;
+}
+function makeSalt(){ return Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,8); }
+async function hashLocal(pwd,salt){ return sha256((salt||'')+':'+pwd); }
+async function checkLocalPwd(u,pwd){ const h=await sha256((u.salt||'')+':'+pwd); if(u.salt) return h===u.pwd; return (await sha256(pwd))===u.pwd; }
+async function remoteCall(action,payload){
+  const res=await fetch(CONFIG.APPS_SCRIPT_URL,{
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action,...payload}),
+  });
+  const json=await res.json();
+  if(!json.ok) throw new Error(json.error||'Erreur serveur');
+  return json;
+}
+
+const API={
+  remote(){ return !!CONFIG.APPS_SCRIPT_URL; },
+  async login(email,password){
+    if(API.remote()) return remoteCall('login',{email,password});
+    await localBootstrap();
+    const users=store.get('utilisateurs')||[];
+    const u=users.find(x=>String(x.email).toLowerCase()===String(email).toLowerCase().trim());
+    if(!u) throw new Error("Identifiant inconnu");
+    if(u.statut==='desactive') throw new Error("Compte désactivé. Contactez l'administrateur.");
+    const okPwd=await checkLocalPwd(u,password);
+    if(!okPwd) throw new Error("Mot de passe incorrect");
+    u.lastLogin=new Date().toISOString();
+    store.set('utilisateurs',users.map(x=>x.id===u.id?u:x));
+    const token='local-'+u.id;
+    const {pwd,salt,...safe}=u;
+    return {ok:true,token,user:safe};
+  },
+  async bootstrap(token){
+    if(API.remote()) return remoteCall('bootstrap',{token});
+    return {ok:true,...(await localBootstrap())};
+  },
+  async save(token,collection,record){
+    if(API.remote()) return remoteCall('save',{token,collection,record});
+    const list=store.get(collection)||[];
+    let rec={...record};
+    if(!rec.id){ rec.id=uid(collection.slice(0,3)); rec.createdAt=new Date().toISOString(); }
+    rec.updatedAt=new Date().toISOString();
+    const i=list.findIndex(x=>x.id===rec.id);
+    if(i>=0) list[i]=rec; else list.push(rec);
+    store.set(collection,list);
+    return {ok:true,record:rec};
+  },
+  async remove(token,collection,id){
+    if(API.remote()) return remoteCall('remove',{token,collection,id});
+    const list=(store.get(collection)||[]).filter(x=>x.id!==id);
+    store.set(collection,list); return {ok:true};
+  },
+  async nextNumber(token,type){
+    if(API.remote()) return remoteCall('nextNumber',{token,type});
+    const seq=store.get('seq')||{devis:0,facture:0};
+    seq[type]=(seq[type]||0)+1; store.set('seq',seq);
+    const p=type==='devis'?'D':'F';
+    return {ok:true,numero:`${p}-${new Date().getFullYear()}-${String(seq[type]).padStart(6,'0')}`};
+  },
+  async setPassword(token,email,newPwd){
+    if(API.remote()) return remoteCall('setPassword',{token,email,newPwd});
+    const users=store.get('utilisateurs')||[];
+    const u=users.find(x=>x.email===email); if(u){ u.salt=makeSalt(); u.pwd=await hashLocal(newPwd,u.salt); store.set('utilisateurs',users); }
+    return {ok:true};
+  },
+  async authState(){
+    if(API.remote()) return remoteCall('authState',{});
+    await localBootstrap();
+    return {ok:true, hasUsers:(store.get('utilisateurs')||[]).length>0};
+  },
+  async bootstrapAdmin(payload){
+    if(API.remote()) return remoteCall('bootstrapAdmin',payload);
+    await localBootstrap();
+    const users=store.get('utilisateurs')||[];
+    if(users.length>0) throw new Error('Configuration déjà effectuée');
+    if(!payload.email||!payload.password) throw new Error('Email et mot de passe requis');
+    const salt=makeSalt();
+    const u={id:uid('u'),prenom:payload.prenom||'',nom:payload.nom||'',email:String(payload.email).toLowerCase().trim(),
+      telephone:payload.telephone||'',fonction:payload.fonction||'Administrateur',role:'pdg',statut:'actif',
+      photo:payload.photo||'',perms:{},salt,pwd:await hashLocal(payload.password,salt),
+      createdAt:new Date().toISOString(),lastLogin:new Date().toISOString()};
+    store.set('utilisateurs',[u]);
+    const {pwd,salt:_s,...safe}=u;
+    return {ok:true,token:'local-'+u.id,user:safe};
+  },
+  async userSave(token,payload){
+    if(API.remote()) return remoteCall('userSave',{token,...payload});
+    const users=store.get('utilisateurs')||[];
+    const email=String(payload.email||'').toLowerCase().trim();
+    if(!email) throw new Error('Email requis');
+    if(users.some(x=>x.id!==payload.id && String(x.email).toLowerCase()===email)) throw new Error('Cet email est déjà utilisé');
+    let u=users.find(x=>x.id===payload.id);
+    if(!u){ u={id:uid('u'),createdAt:new Date().toISOString(),lastLogin:''}; users.push(u); }
+    u.prenom=payload.prenom||''; u.nom=payload.nom||''; u.email=email; u.telephone=payload.telephone||'';
+    u.fonction=payload.fonction||''; u.role=payload.role||'commerciale'; u.statut=payload.statut||'actif';
+    u.photo=payload.photo||''; u.perms=payload.perms||{};
+    if(payload.password){ u.salt=makeSalt(); u.pwd=await hashLocal(payload.password,u.salt); }
+    if(!u.pwd) throw new Error('Mot de passe requis pour un nouvel utilisateur');
+    store.set('utilisateurs',users);
+    const {pwd,salt,...safe}=u;
+    return {ok:true,user:safe};
+  },
+  async userDelete(token,id){
+    if(API.remote()) return remoteCall('userDelete',{token,id});
+    let users=store.get('utilisateurs')||[];
+    users=users.filter(x=>x.id!==id);
+    store.set('utilisateurs',users);
+    return {ok:true};
+  },
+};
+
+/* =========================================================================
+   ICÔNES (SVG inline, trait fin)
+   ------------------------------------------------------------------------- */
+const I=(p,vb='0 0 24 24')=>({size=18,...r})=>(
+  <svg width={size} height={size} viewBox={vb} fill="none" stroke="currentColor" strokeWidth="1.7"
+    strokeLinecap="round" strokeLinejoin="round" {...r}>{p}</svg>);
+const Ico={
+  dash:I(<><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></>),
+  doc:I(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></>),
+  invoice:I(<><path d="M5 2h14v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></>),
+  users:I(<><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M21 20a6 6 0 0 0-4-5.6"/></>),
+  pay:I(<><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></>),
+  tpl:I(<><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></>),
+  cog:I(<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 8.4a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8z"/></>),
+  hist:I(<><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l3 2"/></>),
+  search:I(<><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></>),
+  plus:I(<><path d="M12 5v14M5 12h14"/></>),
+  menu:I(<><path d="M3 6h18M3 12h18M3 18h18"/></>),
+  x:I(<><path d="M18 6 6 18M6 6l12 12"/></>),
+  chevron:I(<><path d="m9 18 6-6-6-6"/></>),
+  pdf:I(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h1.5a1.5 1.5 0 0 0 0-3H9v6"/></>),
+  print:I(<><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></>),
+  copy:I(<><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>),
+  trash:I(<><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></>),
+  edit:I(<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></>),
+  arrow:I(<><path d="M5 12h14M13 6l6 6-6 6"/></>),
+  check:I(<><path d="M20 6 9 17l-5-5"/></>),
+  patient:I(<><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>),
+  euro:I(<><path d="M18 7a6 6 0 0 0-9 9 6 6 0 0 0 9 2"/><path d="M4 11h9M4 15h7"/></>),
+  wallet:I(<><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/><circle cx="17" cy="13" r="1.4"/></>),
+  send:I(<><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></>),
+  bell:I(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>),
+  lock:I(<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>),
+  power:I(<><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></>),
+};
+/* =========================================================================
+   PRIMITIVES UI
+   ------------------------------------------------------------------------- */
+const ToastCtx=createContext(null);
+const useToast=()=>useContext(ToastCtx);
+function ToastHost({children}){
+  const [items,setItems]=useState([]);
+  const push=useCallback((msg,type='ok')=>{
+    const id=uid('t'); setItems(s=>[...s,{id,msg,type}]);
+    setTimeout(()=>setItems(s=>s.filter(t=>t.id!==id)),3200);
+  },[]);
+  return <ToastCtx.Provider value={push}>{children}
+    <div className="toasts">{items.map(t=>(
+      <div key={t.id} className={"toast "+t.type}><span className="bar"></span>{t.msg}</div>))}</div>
+  </ToastCtx.Provider>;
+}
+
+function StatusBadge({s}){
+  const map={
+    brouillon:['b-draft','Brouillon'], envoye:['b-part','Envoyée'], accepte:['b-paid','Accepté'],
+    attente:['b-draft','Brouillon'], acompte:['b-wait','Acompte reçu'], partielle:['b-part','Paiement partiel'],
+    payee:['b-paid','Payée'], annulee:['b-cancel','Annulée'],
+  };
+  const [cls,lab]=map[s]||['b-draft',s||'—'];
+  return <span className={"badge "+cls}><span className="dot"></span>{lab}</span>;
+}
+
+function Field({label,hint,children}){
+  return <div className="field"><label>{label}{hint&&<span className="hint">{hint}</span>}</label>{children}</div>;
+}
+function Input(p){ return <input className="input" {...p}/>; }
+function Textarea(p){ return <textarea className="input" {...p}/>; }
+function Select({children,...p}){ return <select className="input" {...p}>{children}</select>; }
+
+function useNavOverlay(closeFn){
+  const app=useApp(); const ref=useRef(closeFn); ref.current=closeFn;
+  useEffect(()=>{ if(!app||!app.registerOverlay) return;
+    const id=app.registerOverlay(()=>{ if(ref.current) ref.current(); });
+    return ()=>app.unregisterOverlay(id);
+  },[]);// eslint-disable-line
+}
+function Drawer({title,onClose,children,footer,wide}){
+  useNavOverlay(onClose);
+  useEffect(()=>{ const h=e=>e.key==='Escape'&&onClose(); window.addEventListener('keydown',h); return()=>window.removeEventListener('keydown',h);},[onClose]);
+  return <div className="overlay" onClick={onClose}>
+    <div className="drawer" style={wide?{width:'min(960px,100%)'}:null} onClick={e=>e.stopPropagation()}>
+      <div className="drawer-head"><h3>{title}</h3><button className="btn btn-ghost btn-sm" onClick={onClose}><Ico.x size={18}/></button></div>
+      <div className="drawer-body">{children}</div>
+      {footer&&<div className="drawer-foot">{footer}</div>}
+    </div></div>;
+}
+function Modal({title,onClose,children,footer,small}){
+  useNavOverlay(onClose);
+  return <div className="overlay modal-center" onClick={onClose}>
+    <div className="modal" style={small?{width:'min(440px,92%)'}:null} onClick={e=>e.stopPropagation()}>
+      <div className="drawer-head"><h3>{title}</h3><button className="btn btn-ghost btn-sm" onClick={onClose}><Ico.x size={18}/></button></div>
+      <div className="drawer-body">{children}</div>
+      {footer&&<div className="drawer-foot">{footer}</div>}
+    </div></div>;
+}
+function Confirm({title,message,danger,onYes,onClose,yes='Confirmer'}){
+  return <Modal small title={title} onClose={onClose} footer={<>
+    <button className="btn" onClick={onClose}>Annuler</button>
+    <button className={"btn "+(danger?'btn-danger':'btn-primary')} onClick={()=>{onYes();onClose();}}>{yes}</button>
+  </>}><p className="muted" style={{margin:0,lineHeight:1.6}}>{message}</p></Modal>;
+}
+function Empty({icon,title,sub,action}){
+  const Ic=icon||Ico.doc;
+  return <div className="empty"><Ic size={46} className="ic"/><h3>{title}</h3><div>{sub}</div>{action&&<div style={{marginTop:16}}>{action}</div>}</div>;
+}
+
+/* =========================================================================
+   CONTEXTE APPLICATION
+   ------------------------------------------------------------------------- */
+const AppCtx=createContext(null);
+const useApp=()=>useContext(AppCtx);
+
+function patientName(p){ return p?`${p.prenom||''} ${p.nom||''}`.trim():'—'; }
+function devisTotal(d){
+  const lines=(d.lignes||[]).reduce((s,l)=>s+Number(l.qty||1)*Number(l.pu||0),0);
+  const opts=(d.options||[]).reduce((s,o)=>s+Number(o.qty||1)*Number(o.prix||0),0);
+  return lines+opts;
+}
+function paidFor(paiements,refId){ return (paiements||[]).filter(p=>p.refId===refId).reduce((s,p)=>s+Number(p.montant||0),0); }
+function optsSum(r){ return (r.options||[]).reduce((s,o)=>s+Number(o.qty||1)*Number(o.prix||0),0); }
+// total « affiché » : si un forfait est saisi, total = forfait + options ; sinon somme des lignes (anciens devis)
+function totalOf(r){ const f=Number(r.forfait||0); return f>0 ? f+optsSum(r) : devisTotal(r); }
+
+// ----- Paiements / factures -----
+const PAY_MODES=['Espèces','Carte bancaire','Virement bancaire','Wise','Stripe','Revolut','Autre'];
+function factPayments(paiements,refId){ return (paiements||[]).filter(p=>p.refId===refId).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }
+function sumPays(list,kind){ return (list||[]).filter(p=> kind==='acompte'? p.type==='acompte' : p.type!=='acompte').reduce((s,p)=>s+Number(p.montant||0),0); }
+function factureStatus(f,payments){
+  if(f.statut==='annulee') return 'annulee';
+  const tot=totalOf(f); const list=payments||[];
+  const paid=list.reduce((s,p)=>s+Number(p.montant||0),0);
+  if(tot>0 && paid>=tot) return 'payee';
+  if(paid>0){ return list.some(p=>p.type!=='acompte')?'partielle':'acompte'; }
+  return f.statut==='envoye'?'envoye':'brouillon';
+}
+
+// Valeurs de départ pour un NOUVEAU devis premium (pré-remplies, modifiables)
+const DEFAULT_INC=[
+  "Honoraires du chirurgien et de l'anesthésiste","Bloc opératoire et hospitalisation",
+  "Consultation préopératoire et analyses sanguines","Médicaments pendant l'hospitalisation",
+  "Traducteur médical francophone","Suivi postopératoire et contrôles",
+  "Corset médical, bas de contention et coussin BBL","Hôtel 5★ avec petit-déjeuner",
+  "Transferts VIP : Aéroport ⇄ Hôtel ⇄ Clinique","1 accompagnant inclus",
+];
+const DEFAULT_IMPORTANT=[
+  "Ce devis est valable 30 jours.",
+  "Le plan opératoire définitif est confirmé après consultation et validation médicale.",
+  "Les billets d'avion ne sont pas inclus.",
+  "Toute modification médicale nécessaire sera décidée exclusivement par le chirurgien dans l'intérêt de la sécurité du patient.",
+];
+const DEFAULT_PAIEMENT_NOTE="Acompte à la réservation par virement. Le solde est payable à votre arrivée à la clinique. Modes de paiement : espèces (€).";
+
+/* Champ éditable inline : ressemble à du texte, s'édite au clic */
+function EditableText({value,onChange,placeholder,multiline,className,style,minCh=6}){
+  const ref=useRef();
+  useEffect(()=>{ if(multiline&&ref.current){ ref.current.style.height='auto'; ref.current.style.height=ref.current.scrollHeight+'px'; } });
+  if(multiline) return <textarea ref={ref} className={"ed ed-m "+(className||'')} style={style}
+    value={value||''} placeholder={placeholder} onChange={e=>onChange(e.target.value)}/>;
+  const w=Math.max(minCh,(((value&&value.length)||(placeholder&&placeholder.length)||minCh))+1);
+  return <input ref={ref} className={"ed "+(className||'')} style={{width:w+'ch',...style}}
+    value={value||''} placeholder={placeholder} onChange={e=>onChange(e.target.value)}/>;
+}
+/* =========================================================================
+   AUTH + PROVIDER + LAYOUT
+   ------------------------------------------------------------------------- */
+function App(){
+  const [session,setSession]=useState(()=>store.get('session'));
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [setup,setSetup]=useState(null); // null=inconnu, true=aucun admin, false=ok
+
+  useEffect(()=>{ if(session){ setSetup(false); return; }
+    let on=true; API.authState().then(r=>{ if(on) setSetup(!r.hasUsers); }).catch(()=>{ if(on) setSetup(false); });
+    return()=>{on=false;}; },[session]);
+
+  const refresh=useCallback(async(silent)=>{
+    if(!session) return;
+    try{ if(!silent) setLoading(true);
+      const r=await API.bootstrap(session.token);
+      setData({parametres:r.parametres||DEFAULT_SETTINGS,patients:r.patients||[],devis:r.devis||[],
+        factures:r.factures||[],paiements:r.paiements||[],modeles:r.modeles||[],options:r.options||[],
+        historique:r.historique||[],utilisateurs:r.utilisateurs||[]});
+    }catch(e){ console.error(e);
+      // Jeton refusé par le serveur (secret modifié, session expirée…) → on nettoie et on renvoie à la connexion
+      if(/session/i.test(e&&e.message||'')){ store.del('session'); setSession(null); setData(null); }
+    }
+    finally{ if(!silent) setLoading(false); }
+  },[session]);
+
+  useEffect(()=>{ if(session) refresh(); },[session]);// eslint-disable-line
+  useEffect(()=>{ if(!session) return; const t=setInterval(()=>refresh(true),CONFIG.POLL_MS); return()=>clearInterval(t);},[session,refresh]);
+
+  const doLogin=async(email,password)=>{
+    const r=await API.login(email,password);
+    const s={token:r.token,user:r.user}; store.set('session',s); setSession(s);
+  };
+  const onAdminCreated=(s)=>{ store.set('session',s); setSession(s); setSetup(false); };
+  const logout=()=>{ store.del('session'); setSession(null); setData(null); };
+
+  if(!session){
+    if(setup===null) return <ToastHost><div className="center-load"><span className="spin"></span></div></ToastHost>;
+    if(setup===true) return <ToastHost><FirstRun onCreated={onAdminCreated}/></ToastHost>;
+    return <ToastHost><Login onLogin={doLogin}/></ToastHost>;
+  }
+  if(!data) return <ToastHost><div className="center-load"><span className="spin"></span><span className="muted">Synchronisation…</span></div></ToastHost>;
+
+  return <ToastHost><Shell session={session} data={data} setData={setData} refresh={refresh} logout={logout} loading={loading}/></ToastHost>;
+}
+
+function FirstRun({onCreated}){
+  const [f,setF]=useState({prenom:'',nom:'',email:'',telephone:'',fonction:'PDG / Administrateur',password:'',password2:''});
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
+  const submit=async()=>{ setErr('');
+    if(!f.email||!f.password) return setErr('Email et mot de passe requis.');
+    if(f.password!==f.password2) return setErr('Les mots de passe ne correspondent pas.');
+    if(f.password.length<6) return setErr('Mot de passe : 6 caractères minimum.');
+    setBusy(true);
+    try{ const r=await API.bootstrapAdmin(f); onCreated({token:r.token,user:r.user}); }
+    catch(e){ setErr(e.message||'Erreur'); } finally{ setBusy(false); } };
+  return <div className="login">
+    <div className="left">
+      <div className="lmark"><div className="mk">N</div>
+        <div><div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600}}>Clinic NobelWorld</div>
+        <div style={{fontSize:12,color:'#9fb3cb',letterSpacing:'.05em'}}>DEVIS &amp; FACTURES</div></div></div>
+      <div className="hero"><h2>Première configuration.</h2>
+        <p>Créez votre compte administrateur. Vous pourrez ensuite ajouter votre équipe depuis le panneau « Utilisateurs ». Aucun compte de démonstration n'est créé.</p></div>
+      <div className="feat"><span>Compte sécurisé</span><span>·</span><span>Accès total</span></div>
+    </div>
+    <div className="right"><div className="form">
+      <h3>Compte administrateur</h3><p className="lead">Ce compte aura un accès complet.</p>
+      <div className="row2"><Field label="Prénom"><Input value={f.prenom} autoFocus onChange={e=>set('prenom',e.target.value)}/></Field>
+        <Field label="Nom"><Input value={f.nom} onChange={e=>set('nom',e.target.value)}/></Field></div>
+      <Field label="Email (identifiant de connexion)"><Input type="email" value={f.email} placeholder="vous@clinicnobel.world" onChange={e=>set('email',e.target.value)}/></Field>
+      <Field label="Téléphone" hint="(optionnel)"><Input value={f.telephone} onChange={e=>set('telephone',e.target.value)}/></Field>
+      <div className="row2"><Field label="Mot de passe"><Input type="password" value={f.password} onChange={e=>set('password',e.target.value)}/></Field>
+        <Field label="Confirmer"><Input type="password" value={f.password2} onChange={e=>set('password2',e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></Field></div>
+      {err&&<div style={{color:'var(--bad)',fontSize:13,marginBottom:12,fontWeight:500}}>{err}</div>}
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'11px'}} disabled={busy} onClick={submit}>
+        {busy?<span className="spin"/>:<>Créer mon compte <Ico.arrow size={16}/></>}</button>
+    </div></div>
+  </div>;
+}
+
+function Login({onLogin}){
+  const [email,setEmail]=useState(''); const [pwd,setPwd]=useState('');
+  const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
+  const submit=async()=>{ setErr(''); setBusy(true);
+    try{ await onLogin(email,pwd); }catch(e){ setErr(e.message||'Connexion impossible'); } finally{ setBusy(false);} };
+  return <div className="login">
+    <div className="left">
+      <div className="lmark"><div className="mk">N</div>
+        <div><div style={{fontFamily:'var(--serif)',fontSize:18,fontWeight:600}}>Clinic NobelWorld</div>
+        <div style={{fontSize:12,color:'#9fb3cb',letterSpacing:'.05em'}}>DEVIS &amp; FACTURES</div></div></div>
+      <div className="hero"><h2>Des devis dignes des plus grandes cliniques privées.</h2>
+        <p>Créez, suivez et transformez vos devis en factures — en temps réel, avec toute votre équipe. Une expérience pensée pour le tourisme médical.</p></div>
+      <div className="feat"><span>Devis premium</span><span>·</span><span>PDF haut de gamme</span><span>·</span><span>Synchro équipe</span></div>
+    </div>
+    <div className="right"><div className="form">
+      <h3>Connexion</h3><p className="lead">Accédez à votre espace de gestion.</p>
+      <Field label="Email"><Input type="email" value={email} autoFocus placeholder="vous@clinicnobel.world"
+        onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></Field>
+      <Field label="Mot de passe"><Input type="password" value={pwd} placeholder="••••••••"
+        onChange={e=>setPwd(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></Field>
+      {err&&<div style={{color:'var(--bad)',fontSize:13,marginBottom:12,fontWeight:500}}>{err}</div>}
+      <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'11px'}} disabled={busy} onClick={submit}>
+        {busy?<span className="spin"/>:<>Se connecter <Ico.arrow size={16}/></>}</button>
+      {!API.remote()&&<p style={{fontSize:11.5,color:'var(--muted-2)',marginTop:18,lineHeight:1.6}}>
+        Mode local (test). Connectez Google Sheets dans Paramètres pour activer la synchro entre utilisateurs.</p>}
+    </div></div>
+  </div>;
+}
+
+const NAV=[
+  {k:'dashboard',label:'Tableau de bord',icon:Ico.dash},
+  {k:'devis',label:'Devis',icon:Ico.doc},
+  {k:'factures',label:'Factures',icon:Ico.invoice},
+  {k:'paiements',label:'Paiements',icon:Ico.wallet},
+  {k:'patients',label:'Patients',icon:Ico.patient},
+  {sec:'Bibliothèque'},
+  {k:'modeles',label:'Modèles de devis',icon:Ico.tpl},
+  {k:'options',label:'Options',icon:Ico.plus},
+  {sec:'Système'},
+  {k:'utilisateurs',label:'Utilisateurs',icon:Ico.users,adminOnly:true},
+  {k:'historique',label:'Historique',icon:Ico.hist},
+  {k:'parametres',label:'Paramètres',icon:Ico.cog},
+];
+
+function Shell({session,data,setData,refresh,logout,loading}){
+  const [view,setView]=useState('dashboard');
+  const [q,setQ]=useState('');
+  const [navOpen,setNavOpen]=useState(false);
+  const toast=useToast();
+  const user=session.user;
+
+  // ===== Navigation interne (pile type application) =====
+  const navStack=useRef([{view:'dashboard',scroll:0}]);
+  const navPos=useRef(0);
+  const overlays=useRef([]);           // pile des fenêtres ouvertes (modales / éditeur)
+  const ovSeq=useRef(0);
+  const [navUI,setNavUI]=useState({fwd:false});
+  const [confirmExit,setConfirmExit]=useState(false);
+  const syncNavUI=()=>setNavUI({fwd:navPos.current<navStack.current.length-1});
+  const applyEntry=(i)=>{ i=Math.max(0,Math.min(i,navStack.current.length-1)); navPos.current=i;
+    setView(navStack.current[i].view); const y=navStack.current[i].scroll||0;
+    requestAnimationFrame(()=>window.scrollTo(0,y)); syncNavUI(); };
+  const navGo=useCallback((v)=>{ if(!v) return;
+    if(overlays.current.length){ overlays.current[overlays.current.length-1].close(); return; } // ferme la fenêtre ouverte d'abord (garde anti-perte)
+    if(v===navStack.current[navPos.current].view) return;           // déjà sur cette page
+    navStack.current[navPos.current].scroll=window.scrollY||0;      // mémorise le défilement quitté
+    navStack.current=navStack.current.slice(0,navPos.current+1);
+    navStack.current.push({view:v,scroll:0}); navPos.current=navStack.current.length-1;
+    setView(v); try{history.pushState({cnw:true,i:navPos.current},'');}catch(e){}
+    window.scrollTo(0,0); syncNavUI();
+  },[]);// eslint-disable-line
+  const navBack=useCallback(()=>{
+    if(overlays.current.length){ overlays.current[overlays.current.length-1].close(); return; } // ferme la fenêtre ouverte d'abord
+    if(navPos.current>0){ navStack.current[navPos.current].scroll=window.scrollY||0; try{history.back();}catch(e){ applyEntry(navPos.current-1); } }
+    else setConfirmExit(true);                                       // déjà à l'accueil → proposer de quitter
+  },[]);// eslint-disable-line
+  const navFwd=useCallback(()=>{ if(overlays.current.length) return;
+    if(navPos.current<navStack.current.length-1){ try{history.forward();}catch(e){ applyEntry(navPos.current+1); } }
+  },[]);// eslint-disable-line
+  useEffect(()=>{ try{history.replaceState({cnw:true,i:0},'');}catch(e){}
+    const onPop=(e)=>{
+      if(overlays.current.length){ overlays.current[overlays.current.length-1].close();
+        try{history.pushState({cnw:true,i:navPos.current},'');}catch(err){} return; }
+      const st=e.state;
+      if(st&&st.cnw&&typeof st.i==='number') applyEntry(st.i);
+      else { try{history.pushState({cnw:true,i:navPos.current},'');}catch(err){} setConfirmExit(true); }
+    };
+    window.addEventListener('popstate',onPop); return ()=>window.removeEventListener('popstate',onPop);
+  },[]);// eslint-disable-line
+  useEffect(()=>{ const h=(e)=>{ if(!e.altKey) return;
+      if(e.key==='ArrowLeft'){ e.preventDefault(); navBack(); }
+      else if(e.key==='ArrowRight'){ e.preventDefault(); navFwd(); } };
+    window.addEventListener('keydown',h); return()=>window.removeEventListener('keydown',h);
+  },[navBack,navFwd]);
+
+  // actions partagées
+  const ctx={
+    user,data,toast,
+    async save(collection,record,logMsg){
+      const r=await API.save(session.token,collection,record);
+      setData(d=>{ const list=d[collection]||[]; const i=list.findIndex(x=>x.id===r.record.id);
+        const nl=i>=0?list.map(x=>x.id===r.record.id?r.record:x):[...list,r.record];
+        return {...d,[collection]:nl}; });
+      if(logMsg) ctx.log(logMsg);
+      return r.record;
+    },
+    async remove(collection,id,logMsg){
+      await API.remove(session.token,collection,id);
+      setData(d=>({...d,[collection]:(d[collection]||[]).filter(x=>x.id!==id)}));
+      if(logMsg) ctx.log(logMsg);
+    },
+    async nextNumber(type){ const r=await API.nextNumber(session.token,type); return r.numero; },
+    async saveUser(payload){
+      const r=await API.userSave(session.token,payload);
+      setData(d=>{ const list=d.utilisateurs||[]; const i=list.findIndex(x=>x.id===r.user.id);
+        const nl=i>=0?list.map(x=>x.id===r.user.id?r.user:x):[...list,r.user];
+        return {...d,utilisateurs:nl}; });
+      return r.user;
+    },
+    async removeUser(id){
+      await API.userDelete(session.token,id);
+      setData(d=>({...d,utilisateurs:(d.utilisateurs||[]).filter(x=>x.id!==id)}));
+    },
+    async resetPassword(email,newPwd){ await API.setPassword(session.token,email,newPwd); },
+    async saveSettings(s){
+      if(API.remote()) await remoteCall('saveSettings',{token:session.token,parametres:s});
+      else store.set('parametres',s);
+      setData(d=>({...d,parametres:s}));
+    },
+    async log(message){
+      const entry={id:uid('h'),date:new Date().toISOString(),user:userLabel(user),message};
+      const r=await API.save(session.token,'historique',entry).catch(()=>({record:entry}));
+      setData(d=>({...d,historique:[r.record,...(d.historique||[])].slice(0,500)}));
+    },
+    go:navGo,
+    registerOverlay(close){ const id=++ovSeq.current; overlays.current.push({id,close}); return id; },
+    unregisterOverlay(id){ overlays.current=overlays.current.filter(o=>o.id!==id); },
+  };
+
+  const Views={dashboard:Dashboard,devis:DevisView,factures:FacturesView,paiements:PaiementsView,
+    patients:PatientsView,modeles:ModelesView,options:OptionsView,historique:HistoriqueView,parametres:ParametresView,
+    utilisateurs:UtilisateursView};
+  const Current=Views[view]||Dashboard;
+  const title=(NAV.find(n=>n.k===view)||{}).label||'Tableau de bord';
+  const navItems=NAV.filter(n=>!n.adminOnly||isAdmin(user));
+
+  return <AppCtx.Provider value={ctx}>
+    <div className="app">
+      <div className={"scrim "+(navOpen?'show':'')} onClick={()=>setNavOpen(false)}/>
+      <aside className={"sidebar "+(navOpen?'open':'')}>
+        <div className="brand"><div className="mark">N</div>
+          <div><div className="name">Clinic NobelWorld</div><div className="sub">Devis &amp; Factures</div></div></div>
+        {navItems.map((n,i)=> n.sec
+          ? <div key={i} className="nav-section">{n.sec}</div>
+          : <button key={n.k} className={"nav-item "+(view===n.k?'active':'')} onClick={()=>{navGo(n.k);setNavOpen(false);}}>
+              <n.icon size={18} className="ic"/>{n.label}</button>)}
+        <div className="nav-spacer"/>
+        <div className="nav-user">{user.photo? <img className="av" src={user.photo} alt="" style={{objectFit:'cover'}}/> : <div className="av">{initials(userLabel(user))}</div>}
+          <div style={{flex:1,minWidth:0}}><div className="nm">{userLabel(user)}</div><div className="rl">{ROLES[user.role]?.label||user.fonction||''}</div></div>
+          <button className="btn btn-ghost btn-sm" style={{color:'#aebed1'}} title="Déconnexion" onClick={logout}><Ico.arrow size={16}/></button></div>
+      </aside>
+      <div className="main">
+        <div className="topbar">
+          <button className="menu-btn" onClick={()=>setNavOpen(true)}><Ico.menu size={20}/></button>
+          <button className="btn btn-ghost btn-sm nav-arrow" title="Retour (Alt+←)" onClick={navBack}><Ico.chevron size={18} style={{transform:'rotate(180deg)'}}/></button>
+          <button className="btn btn-ghost btn-sm nav-arrow" disabled={!navUI.fwd} title="Suivant (Alt+→)" onClick={navFwd}><Ico.chevron size={18}/></button>
+          <h1>{title}</h1>
+          <div className="search"><Ico.search size={16} className="ic"/>
+            <input placeholder="Rechercher patient, devis, facture…" value={q} onChange={e=>setQ(e.target.value)}/></div>
+          {loading&&<span className="spin"/>}
+          <button className="btn btn-ghost btn-sm" title="Actualiser" onClick={()=>refresh()}><Ico.hist size={16}/></button>
+        </div>
+        <div className="content">
+          {q.trim()? <SearchResults q={q} onClear={()=>setQ('')}/> : <Current/>}
+        </div>
+      </div>
+    </div>
+    {confirmExit&&<Modal small title="Quitter Clinic NobelWorld ?" onClose={()=>setConfirmExit(false)} footer={<>
+      <button className="btn" onClick={()=>setConfirmExit(false)}>Annuler</button>
+      <button className="btn btn-danger" onClick={()=>{ setConfirmExit(false); try{history.back();}catch(e){} }}>Quitter</button>
+    </>}><p className="muted" style={{margin:0,lineHeight:1.6}}>Vous êtes sur la page d'accueil. Voulez-vous quitter l'application&nbsp;?</p></Modal>}
+  </AppCtx.Provider>;
+}
+/* =========================================================================
+   TABLEAU DE BORD
+   ------------------------------------------------------------------------- */
+function Kpi({label,value,sub,icon,tone}){
+  const Ic=icon;
+  return <div className={"kpi "+(tone||'')}><span className="edge"/>
+    <div className="lab">{Ic&&<Ic size={15}/>}{label}</div>
+    <div className="val tnum">{value}</div>{sub&&<div className="sub">{sub}</div>}</div>;
+}
+function Dashboard(){
+  const {data,user,go}=useApp();
+  const cur=data.parametres.currency||'€';
+  const myDevis = user.role==='commerciale' ? data.devis.filter(d=>d.createdBy===user.id) : data.devis;
+  const totalDevis=myDevis.reduce((s,d)=>s+totalOf(d),0);
+  const encaisse=data.paiements.reduce((s,p)=>s+Number(p.montant||0),0);
+  const factTotal=data.factures.reduce((s,f)=>s+totalOf(f),0);
+  const restant=Math.max(0,factTotal-encaisse);
+  const enAttente=data.devis.filter(d=>['brouillon','envoye'].includes(d.statut)).length;
+  const payees=data.factures.filter(f=>f.statut==='payee').length;
+  // graphique mensuel (montant devis sur 6 mois)
+  const months=[...Array(6)].map((_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-(5-i)); return {key:d.toISOString().slice(0,7),label:d.toLocaleDateString('fr-FR',{month:'short'})}; });
+  const series=months.map(m=>({...m,val:myDevis.filter(d=>(normalizeDate(d.date)||'').slice(0,7)===m.key).reduce((s,d)=>s+totalOf(d),0)}));
+  const maxV=Math.max(1,...series.map(s=>s.val));
+  const recents=[...myDevis].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,6);
+
+  return <>
+    <div className="grid kpis" style={{marginBottom:18}}>
+      <Kpi label="Devis" value={myDevis.length} sub={money(totalDevis,cur)+' au total'} icon={Ico.doc}/>
+      <Kpi label="Factures" value={data.factures.length} sub={payees+' payée(s)'} icon={Ico.invoice} tone="gold"/>
+      <Kpi label="Encaissé" value={money(encaisse,cur)} sub={data.paiements.length+' paiement(s)'} icon={Ico.wallet} tone="ok"/>
+      <Kpi label="Restant dû" value={money(restant,cur)} sub="sur factures émises" icon={Ico.euro} tone="warn"/>
+      <Kpi label="Patients" value={data.patients.length} icon={Ico.patient}/>
+      <Kpi label="Devis en attente" value={enAttente} sub="brouillon / envoyé" icon={Ico.bell}/>
+    </div>
+    <div className="grid" style={{gridTemplateColumns:'1.4fr 1fr',alignItems:'start'}}>
+      <div className="card card-pad">
+        <div className="sec-head"><div><h2>Volume des devis</h2><div className="desc">6 derniers mois</div></div></div>
+        <div className="bars">{series.map(s=>(
+          <div key={s.key} className="bcol"><div style={{flex:1,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+            <div className="b" style={{height:Math.round((s.val/maxV)*100)+'%'}} title={money(s.val,cur)}/></div>
+            <div className="bl">{s.label}</div></div>))}</div>
+      </div>
+      <div className="card card-pad">
+        <div className="sec-head"><div><h2>Derniers devis</h2></div>
+          <button className="btn btn-sm" onClick={()=>go('devis')}>Tout voir</button></div>
+        {recents.length? recents.map(d=>{ const p=data.patients.find(x=>x.id===d.patientId);
+          return <div key={d.id} className="clickable" onClick={()=>go('devis')}
+            style={{display:'flex',alignItems:'center',gap:12,padding:'10px 4px',borderBottom:'1px solid var(--surface-2)',cursor:'pointer'}}>
+            <div className="av" style={{width:30,height:30,borderRadius:8,background:'var(--surface-2)',color:'var(--blue)',display:'grid',placeItems:'center',fontSize:11,fontWeight:700}}>{initials(patientName(p))}</div>
+            <div style={{flex:1,minWidth:0}}><div className="t-strong" style={{fontSize:13}}>{d.numero}</div>
+              <div className="muted" style={{fontSize:12}}>{patientName(p)}</div></div>
+            <div style={{textAlign:'right'}}><div className="t-strong tnum">{money(totalOf(d),cur)}</div>
+              <div style={{fontSize:11}}><StatusBadge s={d.statut}/></div></div>
+          </div>; }) : <Empty title="Aucun devis" sub="Créez votre premier devis."/>}
+      </div>
+    </div>
+  </>;
+}
+
+/* =========================================================================
+   RECHERCHE GLOBALE
+   ------------------------------------------------------------------------- */
+function SearchResults({q,onClear}){
+  const {data,go}=useApp(); const s=q.toLowerCase().trim();
+  const pats=data.patients.filter(p=>[p.nom,p.prenom,p.telephone,p.pays,p.email].some(v=>(v||'').toLowerCase().includes(s)));
+  const dvs=data.devis.filter(d=>(d.numero||'').toLowerCase().includes(s));
+  const fcs=data.factures.filter(f=>(f.numero||'').toLowerCase().includes(s));
+  const n=pats.length+dvs.length+fcs.length;
+  return <div>
+    <div className="toolbar"><div className="t-strong">{n} résultat(s) pour « {q} »</div><div className="sp"/>
+      <button className="btn btn-sm" onClick={onClear}>Effacer</button></div>
+    {!n&&<div className="card"><Empty icon={Ico.search} title="Aucun résultat" sub="Essayez un autre nom ou numéro."/></div>}
+    {pats.length>0&&<div className="card" style={{marginBottom:14}}>
+      <div className="card-pad" style={{paddingBottom:0}}><h2 style={{fontSize:14,margin:0}}>Patients</h2></div>
+      <table><tbody>{pats.map(p=><tr key={p.id} className="clickable" onClick={()=>go('patients')}>
+        <td className="t-strong">{patientName(p)}</td><td className="muted">{p.telephone}</td><td className="muted">{p.pays}</td></tr>)}</tbody></table></div>}
+    {dvs.length>0&&<div className="card" style={{marginBottom:14}}>
+      <div className="card-pad" style={{paddingBottom:0}}><h2 style={{fontSize:14,margin:0}}>Devis</h2></div>
+      <table><tbody>{dvs.map(d=><tr key={d.id} className="clickable" onClick={()=>go('devis')}>
+        <td className="t-strong">{d.numero}</td><td><StatusBadge s={d.statut}/></td><td className="tnum">{money(totalOf(d))}</td></tr>)}</tbody></table></div>}
+    {fcs.length>0&&<div className="card">
+      <div className="card-pad" style={{paddingBottom:0}}><h2 style={{fontSize:14,margin:0}}>Factures</h2></div>
+      <table><tbody>{fcs.map(f=><tr key={f.id} className="clickable" onClick={()=>go('factures')}>
+        <td className="t-strong">{f.numero}</td><td><StatusBadge s={f.statut}/></td><td className="tnum">{money(totalOf(f))}</td></tr>)}</tbody></table></div>}
+  </div>;
+}
+
+/* =========================================================================
+   PATIENTS
+   ------------------------------------------------------------------------- */
+function PatientsView(){
+  const {data,save,remove,user,toast}=useApp();
+  const [edit,setEdit]=useState(null); const [del,setDel]=useState(null);
+  const list=user.role==='commerciale'? data.patients.filter(p=>p.createdBy===user.id): data.patients;
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Patients</h2>
+      <div className="desc">{list.length} fiche(s)</div></div></div><div className="sp"/>
+      <button className="btn btn-primary" onClick={()=>setEdit({})}><Ico.plus size={16}/>Nouveau patient</button></div>
+    <div className="card">{list.length? <table>
+      <thead><tr><th>Patient</th><th>Téléphone</th><th>Pays</th><th>Email</th><th>Devis</th><th></th></tr></thead>
+      <tbody>{list.map(p=>{ const nd=data.devis.filter(d=>d.patientId===p.id).length;
+        return <tr key={p.id} className="clickable" onClick={()=>setEdit(p)}>
+          <td className="t-strong">{patientName(p)}</td><td className="muted">{p.telephone||'—'}</td>
+          <td className="muted">{p.pays||'—'}</td><td className="muted">{p.email||'—'}</td>
+          <td><span className="chip">{nd}</span></td>
+          <td style={{textAlign:'right'}}>{can(user,'all')&&<button className="btn btn-ghost btn-sm btn-danger" onClick={e=>{e.stopPropagation();setDel(p);}}><Ico.trash size={15}/></button>}</td>
+        </tr>;})}</tbody></table>
+      : <Empty icon={Ico.patient} title="Aucun patient" sub="Ajoutez votre première fiche patient."
+          action={<button className="btn btn-primary" onClick={()=>setEdit({})}><Ico.plus size={16}/>Nouveau patient</button>}/>}</div>
+    {edit&&<PatientForm patient={edit} onClose={()=>setEdit(null)}
+      onSave={async v=>{ const isNew=!v.id; const rec=await save('patients',{...v,...(isNew?{createdBy:user.id}:{})},
+        `${isNew?'a créé':'a modifié'} le patient ${patientName(v)}`); toast('Patient enregistré'); setEdit(null); }}/>}
+    {del&&<Confirm danger title="Supprimer le patient" message={`Supprimer définitivement ${patientName(del)} ?`}
+      yes="Supprimer" onClose={()=>setDel(null)} onYes={async()=>{ await remove('patients',del.id,`a supprimé le patient ${patientName(del)}`); toast('Patient supprimé','err'); }}/>}
+  </>;
+}
+function PatientForm({patient,onClose,onSave}){
+  const [f,setF]=useState({nom:'',prenom:'',telephone:'',whatsapp:'',email:'',pays:'',ville:'',naissance:'',commentaires:'',...patient});
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  return <Drawer title={patient.id?'Modifier le patient':'Nouveau patient'} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn btn-primary" disabled={!f.nom} onClick={()=>onSave(f)}><Ico.check size={16}/>Enregistrer</button></>}>
+    <div className="row2"><Field label="Prénom"><Input value={f.prenom} onChange={e=>set('prenom',e.target.value)}/></Field>
+      <Field label="Nom"><Input value={f.nom} onChange={e=>set('nom',e.target.value)}/></Field></div>
+    <div className="row2"><Field label="Téléphone"><Input value={f.telephone} onChange={e=>set('telephone',e.target.value)}/></Field>
+      <Field label="WhatsApp"><Input value={f.whatsapp} onChange={e=>set('whatsapp',e.target.value)}/></Field></div>
+    <Field label="Email"><Input type="email" value={f.email} onChange={e=>set('email',e.target.value)}/></Field>
+    <div className="row3"><Field label="Pays"><Input value={f.pays} onChange={e=>set('pays',e.target.value)}/></Field>
+      <Field label="Ville"><Input value={f.ville} onChange={e=>set('ville',e.target.value)}/></Field>
+      <Field label="Naissance"><Input type="date" value={f.naissance} onChange={e=>set('naissance',e.target.value)}/></Field></div>
+    <Field label="Commentaires"><Textarea value={f.commentaires} onChange={e=>set('commentaires',e.target.value)}/></Field>
+  </Drawer>;
+}
+/* =========================================================================
+   DOCUMENT PREMIUM (devis & facture) + impression PDF
+   ------------------------------------------------------------------------- */
+/* Page A4 partagée : éditable (éditeur) ou statique (aperçu/PDF). Garantit un PDF identique à l'aperçu. */
+function DevisDoc({record,settings,patient,type,paid,editable,on}){
+  const s=settings; const cur=s.currency||'€'; const isF=type==='facture'; const E=!!editable;
+  const set=(k,v)=>on&&on.set(k,v);
+  const logo=s.logo||DEFAULT_LOGO;
+  const app=useApp();
+  const conseiller=((app&&app.data&&app.data.utilisateurs)||[]).find(u=>u.id===record.createdBy)||(app&&app.user)||null;
+  const dragInc=useRef(null); const dragExc=useRef(null);
+  const actes=(record.actes&&record.actes.length)?record.actes:(record.lignes||[]).map((l,i)=>({id:'l'+i,acte:l.desc,inclus:''}));
+  const inc=record.inc||[];
+  const exc=record.exc||[];
+  const options=record.options||[];
+  const important=(record.importantList&&record.importantList.length)?record.importantList
+    :(record.important?[record.important]:(s.important?[s.important]:DEFAULT_IMPORTANT));
+  const paiementNote=(record.paiementNote!=null?record.paiementNote:DEFAULT_PAIEMENT_NOTE);
+  const forfait=Number(record.forfait||0);
+  const sousTotal=forfait>0?forfait:devisTotal(record);
+  const oSum=optsSum(record);
+  const total=totalOf(record);
+  const paidN=Number(paid||0);
+  const reste=Math.max(0,total-paidN);
+  const title=isF?'Facture':(s.docTitle||'DEVIS MÉDICAL PREMIUM');
+  const footLegal=isF?`${s.company} — Facture ${record.numero}. Document tenant lieu de facture.`:(s.legal||'');
+  const qr=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent((s.company||'')+' '+(record.numero||''))}`;
+
+  return <div className="doc-wrap"><div className={"doc"+(E?' doc-edit':'')}>
+
+    {/* ===================== PAGE 1 ===================== */}
+    <section className="page">
+      <div className="dhead">
+        <div className="co">
+          {logo&&<img className="logo" src={logo} alt={s.company}/>}
+          <div className="nm">{s.company}</div><div className="tag">{s.tagline}</div>
+          <div className="ad">{s.address}<br/>{s.phone} · {s.email}<br/>{s.website}</div>
+          {conseiller&&(conseiller.prenom||conseiller.nom||conseiller.email)&&
+            <div className="adv">
+              <div className="advt">👤 Conseiller médical</div>
+              <div className="advn">{userLabel(conseiller)}</div>
+              {conseiller.fonction&&<div className="advf">{conseiller.fonction}</div>}
+              {conseiller.telephone&&<div className="advp">📞 {fmtPhone(conseiller.telephone)}</div>}
+            </div>}
+        </div>
+        <div className="meta">
+          <div className="ty">{isF?'Facture':'Devis'}</div>
+          <div className="no">{record.numero||'—'}</div>
+          <div className="dt">Date : {E?<input type="date" className="ed" value={normalizeDate(record.date)} onChange={e=>set('date',e.target.value)}/>:<b>{fmtDate(record.date)}</b>}
+            <br/>{isF?'Échéance':'Validité'} : {E?<input type="date" className="ed" value={normalizeDate(record.validite)} onChange={e=>set('validite',e.target.value)}/>:<b>{fmtDate(record.validite)}</b>}</div>
+        </div>
+      </div>
+      <div className="drule"/>
+      <div className="dbody">
+        <div className="doctitle">{isF?'FACTURE':'DEVIS MÉDICAL'}<span className="sub">{s.company}</span></div>
+
+        <div className="pinfo">
+          <div className="c"><div className="k">Patient(e)</div><div className="val">
+            {E? <select className="ed" value={record.patientId||''} onChange={e=>set('patientId',e.target.value)}>
+                  <option value="">— Sélectionner —</option>
+                  {(on.patients||[]).map(p=><option key={p.id} value={p.id}>{patientName(p)}</option>)}</select>
+              : patientName(patient)}</div></div>
+          <div className="c"><div className="k">Date du devis</div><div className="val">
+            {E?<input type="date" className="ed" value={normalizeDate(record.date)} onChange={e=>set('date',e.target.value)}/>:fmtDate(record.date)}</div></div>
+          <div className="c"><div className="k">Date prévue de l'intervention</div><div className="val">
+            {E?<input type="date" className="ed" value={normalizeDate(record.dateIntervention)} onChange={e=>set('dateIntervention',e.target.value)}/>
+              :(record.dateIntervention?fmtDate(record.dateIntervention):'À définir')}</div></div>
+          <div className="c"><div className="k">Chirurgien</div><div className="val">
+            {E?<EditableText value={record.chirurgien} placeholder="Dr …" onChange={v=>set('chirurgien',v)}/>:(record.chirurgien||'À confirmer')}</div></div>
+          <div className="c" style={{gridColumn:'1 / -1'}}><div className="k">Clinique partenaire</div><div className="val">
+            {E?<EditableText multiline value={record.hopital} placeholder="Clinique / hôpital" onChange={v=>set('hopital',v)}/>:(record.hopital||s.address)}</div></div>
+        </div>
+
+        <div className="sec"><div className="seclbl">Interventions prévues</div>
+          <table className="acttab"><thead><tr><th>Acte</th><th>Inclus / détail</th></tr></thead>
+            <tbody>
+            {actes.map((a)=><tr key={a.id}>
+              <td className="act">{E?<EditableText value={a.acte} placeholder="Acte" onChange={v=>on.setActe(a.id,'acte',v)}/>:a.acte}</td>
+              <td>{E?<div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+                    <EditableText multiline value={a.inclus} placeholder="Détail / ce qui est inclus" onChange={v=>on.setActe(a.id,'inclus',v)}/>
+                    <button className="delrow" title="Retirer" onClick={()=>on.rmActe(a.id)}>×</button></div>
+                  :a.inclus}</td></tr>)}
+            {!actes.length&&!E&&<tr><td colSpan="2" style={{color:'var(--muted-2)',textAlign:'center',padding:16}}>—</td></tr>}
+            </tbody></table>
+          {E&&<button className="addrow" onClick={on.addActe}>+ Ajouter un acte</button>}
+        </div>
+
+        {(options.length>0||E)&&<div className="sec"><div className="seclbl">Option{options.length>1?'s':''}</div>
+          <div>{options.map((o,i)=><div key={i} className="optrow">
+            {E?<><EditableText value={o.nom} placeholder="Option" onChange={v=>on.setOpt(i,'nom',v)} className="lbl" style={{flex:1}}/>
+                <input className="ed tnum" style={{width:'8ch',textAlign:'right'}} type="number" value={o.prix||0} onChange={e=>on.setOpt(i,'prix',Number(e.target.value))}/>
+                <span className="muted">{cur}</span><button className="delrow" onClick={()=>on.rmOpt(i)}>×</button></>
+              :<><span className="lbl">{o.nom}</span><span className="price tnum">{money((o.qty||1)*o.prix,cur)}</span></>}</div>)}</div>
+          {E&&<button className="addrow" onClick={on.addOpt}>+ Ajouter une option</button>}
+        </div>}
+
+        <div className="sec"><div className="seclbl">Conditions de paiement</div>
+          <div className="paybox">
+            <div className="l"><span>Prix du forfait</span><span className="v tnum">{money(sousTotal,cur)}{s.vat?' TTC':''}</span></div>
+            {oSum>0&&<div className="l"><span>Options</span><span className="v tnum">{money(oSum,cur)}</span></div>}
+            {oSum>0&&<div className="l"><span>Total</span><span className="v tnum">{money(total,cur)}</span></div>}
+            <div className="l acc"><span>{isF?'Déjà réglé':'Acompte à la réservation'}</span><span className="v tnum">{money(paidN,cur)}</span></div>
+            <div className="l big"><span>Reste à payer</span><span className="v tnum">{money(reste,cur)}</span></div>
+            <div className="note">{E?<EditableText multiline value={paiementNote} onChange={v=>set('paiementNote',v)}/>:paiementNote}
+              <br/><span style={{fontWeight:700,color:'var(--ink)'}}>IBAN {s.iban} · BIC {s.bic}</span></div>
+          </div>
+        </div>
+      </div>
+      <div className="pagefoot" style={{marginTop:'auto'}}><span>{s.company} · {record.numero||''}</span><span>Page 1/2</span></div>
+    </section>
+
+    {/* ===================== PAGE 2 ===================== */}
+    <section className="page page-break">
+      <div className="cont"><span className="cnm">{s.company}</span><span className="cno">{isF?'Facture':'Devis'} {record.numero||''} — suite</span></div>
+      <div className="dbody dbody2">
+        {(inc.length>0||E)&&<div className="sec"><div className="seclbl">Prestations incluses</div>
+          <div>{inc.map((x,i)=><div key={i} className="incrow" {...(E?{onDragOver:(e)=>e.preventDefault(),onDrop:(e)=>{e.preventDefault();const fr=dragInc.current;if(fr!=null&&fr!==i)on.moveInc(fr,i);dragInc.current=null;}}:{})}>
+            <span className="bul">✓</span>
+            {E?<><span className="draghand" draggable onDragStart={()=>{dragInc.current=i;}} title="Glisser pour réordonner">⠿</span>
+                <EditableText value={x} placeholder="Prestation incluse" onChange={v=>on.setInc(i,v)} style={{flex:1}}/>
+                <button className="delrow" onClick={()=>on.rmInc(i)}>×</button></>:<span>{x}</span>}</div>)}</div>
+          {E&&<button className="addrow" onClick={on.addInc}>+ Ajouter une prestation</button>}
+        </div>}
+
+        {(exc.length>0||E)&&<div className="sec"><div className="seclbl">Prestations non incluses</div>
+          <div>{exc.map((x,i)=><div key={i} className="incrow exrow" {...(E?{onDragOver:(e)=>e.preventDefault(),onDrop:(e)=>{e.preventDefault();const fr=dragExc.current;if(fr!=null&&fr!==i)on.moveExc(fr,i);dragExc.current=null;}}:{})}>
+            <span className="bul ex">✕</span>
+            {E?<><span className="draghand" draggable onDragStart={()=>{dragExc.current=i;}} title="Glisser pour réordonner">⠿</span>
+                <EditableText value={x} placeholder="Prestation non incluse" onChange={v=>on.setExc(i,v)} style={{flex:1}}/>
+                <button className="delrow" onClick={()=>on.rmExc(i)}>×</button></>:<span>{x}</span>}</div>)}</div>
+          {E&&<button className="addrow" onClick={on.addExc}>+ Ajouter une prestation non incluse</button>}
+        </div>}
+
+        <div className="sec"><div className="seclbl">Conditions importantes</div>
+          {E? <div>{important.map((x,i)=><div key={i} className="incrow"><span className="bul" style={{color:'var(--gold)'}}>•</span>
+                <EditableText value={x} placeholder="Condition importante" onChange={v=>on.setImp(i,v)} style={{flex:1}}/>
+                <button className="delrow" onClick={()=>on.rmImp(i)}>×</button></div>)}
+              <button className="addrow" onClick={on.addImp}>+ Ajouter une condition</button></div>
+            : <ul className="implist">{important.map((x,i)=><li key={i}>{x}</li>)}</ul>}
+        </div>
+
+        {(s.cgv||E)&&<div className="sec"><div className="seclbl">Notes médicales et administratives</div>
+          <div className="notesbox">{s.cgv||''}</div></div>}
+      </div>
+      <div style={{marginTop:'auto'}}>
+        <div className="endblock">
+          <span>{footLegal||((s.company||'Clinic NobelWorld')+' — Document non contractuel à valeur d’estimation.')}</span>
+          <img className="qr" src={qr} alt="QR" onError={e=>e.target.style.display='none'}/>
+        </div>
+        <div className="pagefoot"><span>{s.company} · {record.numero||''}</span><span>Page 2/2</span></div>
+      </div>
+    </section>
+
+  </div></div>;
+}
+
+function DocumentView({record,type,onClose,list,onChange}){
+  const {data}=useApp(); const s=data.parametres;
+  const isF=type==='facture';
+  // Navigation dans l'ordre exact de la liste affichée (filtres/recherche conservés)
+  const items=(Array.isArray(list)&&list.length)?list:[record];
+  const idx=Math.max(0,items.findIndex(x=>x.id===record.id));
+  const rec=items[idx]||record;            // données à jour même après un rafraîchissement
+  const canPrev=idx>0, canNext=idx<items.length-1;
+  const goTo=(i)=>{ if(!onChange||i<0||i>=items.length) return; onChange(items[i]); };
+  const p=data.patients.find(x=>x.id===rec.patientId)||{};
+  const paid=isF? paidFor(data.paiements,rec.id) : Number(rec.acompte||0);
+  // Raccourcis clavier ← / → (ignorés quand on tape dans un champ)
+  useEffect(()=>{
+    const h=(e)=>{ const t=e.target||{}; const tag=(t.tagName||'').toLowerCase();
+      if(tag==='input'||tag==='textarea'||tag==='select'||t.isContentEditable) return;
+      if(e.key==='ArrowLeft'&&canPrev){ e.preventDefault(); goTo(idx-1); }
+      else if(e.key==='ArrowRight'&&canNext){ e.preventDefault(); goTo(idx+1); }
+    };
+    window.addEventListener('keydown',h); return()=>window.removeEventListener('keydown',h);
+  },[idx,items,canPrev,canNext]);// eslint-disable-line
+  // Document sur 2 pages A4 : plus de réduction forcée, on laisse la pagination naturelle
+  const fitOnePage=React.useCallback(()=>{ const el=document.querySelector('#print-area .doc'); if(el) el.style.zoom=''; },[]);
+  const resetFit=React.useCallback(()=>{ const el=document.querySelector('#print-area .doc'); if(el) el.style.zoom=''; },[]);
+  React.useEffect(()=>{
+    window.addEventListener('beforeprint',fitOnePage);
+    window.addEventListener('afterprint',resetFit);
+    return ()=>{ window.removeEventListener('beforeprint',fitOnePage); window.removeEventListener('afterprint',resetFit); };
+  },[fitOnePage,resetFit]);
+  const doPrint=()=>{ fitOnePage(); setTimeout(()=>window.print(),60); };
+  const label=isF?'Facture':'Devis';
+  return <Drawer wide title={label+' '+(rec.numero||'')} onClose={onClose}
+    footer={<>
+      <div className="docnav">
+        <button className="btn btn-sm" disabled={!canPrev} onClick={()=>goTo(idx-1)} title="Précédent (←)"><Ico.chevron size={16} style={{transform:'rotate(180deg)'}}/></button>
+        <span className="docnav-c">{label} {idx+1} / {items.length}</span>
+        <button className="btn btn-sm" disabled={!canNext} onClick={()=>goTo(idx+1)} title="Suivant (→)"><Ico.chevron size={16}/></button>
+      </div>
+      <button className="btn" onClick={onClose}>Fermer</button>
+      <button className="btn btn-primary" onClick={doPrint}><Ico.print size={16}/>Imprimer / PDF</button></>}>
+    <div id="print-area"><DevisDoc record={rec} settings={s} patient={p} type={type} paid={paid} editable={false}/></div>
+  </Drawer>;
+}
+
+/* =========================================================================
+   DEVIS
+   ------------------------------------------------------------------------- */
+function DevisView(){
+  const {data,user,save,remove,nextNumber,toast,go}=useApp();
+  const [editor,setEditor]=useState(null);   // {} ou devis existant
+  const [viewDoc,setViewDoc]=useState(null);
+  const [del,setDel]=useState(null);
+  const [filter,setFilter]=useState('tous');
+  let list=user.role==='commerciale'? data.devis.filter(d=>d.createdBy===user.id): data.devis;
+  if(filter!=='tous') list=list.filter(d=>d.statut===filter);
+  list=[...list].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const cur=data.parametres.currency||'€';
+
+  const duplicate=async(d)=>{
+    const numero=await nextNumber('devis');
+    const copy={...d}; delete copy.id; delete copy.createdAt; delete copy.updatedAt;
+    await save('devis',{...copy,numero,statut:'brouillon',createdBy:user.id},`a dupliqué un devis → ${numero}`);
+    toast('Devis dupliqué : '+numero);
+  };
+  const convert=async(d)=>{
+    const numero=await nextNumber('facture');
+    const fac={...d,id:undefined,numeroDevis:d.numero,numero,statut:'brouillon',devisId:d.id,createdBy:user.id};
+    delete fac.createdAt; delete fac.updatedAt;
+    await save('factures',fac,`a transformé ${d.numero} en facture ${numero}`);
+    await save('devis',{...d,statut:'accepte'});
+    toast('Facture créée : '+numero); go('factures');
+  };
+
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Devis</h2>
+      <div className="desc">{list.length} devis</div></div></div><div className="sp"/>
+      <div className="seg">{['tous','brouillon','envoye','accepte'].map(k=>(
+        <button key={k} className={filter===k?'on':''} onClick={()=>setFilter(k)}>{k==='tous'?'Tous':({brouillon:'Brouillons',envoye:'Envoyés',accepte:'Acceptés'})[k]}</button>))}</div>
+      {can(user,'devisCreate')&&<button className="btn btn-primary" onClick={()=>setEditor({})}><Ico.plus size={16}/>Nouveau devis</button>}</div>
+    <div className="card">{list.length? <table>
+      <thead><tr><th>N°</th><th>Patient</th><th>Date</th><th>Intervention</th><th>Statut</th><th className="r" style={{textAlign:'right'}}>Total</th><th></th></tr></thead>
+      <tbody>{list.map(d=>{ const p=data.patients.find(x=>x.id===d.patientId);
+        const mine=d.createdBy===user.id; const canEdit=can(user,'devisEditAll')||can(user,'all')||(can(user,'devisEditOwn')&&mine);
+        return <tr key={d.id} className="clickable" onClick={()=>setViewDoc(d)}>
+          <td className="t-strong">{d.numero}</td><td>{patientName(p)}</td><td className="muted">{fmtDate(d.date)}</td>
+          <td className="muted">{d.dateIntervention?fmtDate(d.dateIntervention):'—'}</td>
+          <td><StatusBadge s={d.statut}/></td><td className="tnum t-strong" style={{textAlign:'right'}}>{money(totalOf(d),cur)}</td>
+          <td onClick={e=>e.stopPropagation()} style={{textAlign:'right',whiteSpace:'nowrap'}}>
+            {canEdit&&<button className="btn btn-ghost btn-sm" title="Modifier" onClick={()=>setEditor(d)}><Ico.edit size={15}/></button>}
+            {can(user,'devisDuplicate')||can(user,'all')? <button className="btn btn-ghost btn-sm" title="Dupliquer" onClick={()=>duplicate(d)}><Ico.copy size={15}/></button>:null}
+            {(can(user,'factureCreate')||can(user,'all'))&&<button className="btn btn-ghost btn-sm" title="→ Facture" onClick={()=>convert(d)}><Ico.invoice size={15}/></button>}
+            {can(user,'all')&&<button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={()=>setDel(d)}><Ico.trash size={15}/></button>}
+          </td></tr>;})}</tbody></table>
+      : <Empty icon={Ico.doc} title="Aucun devis" sub="Créez un devis premium en quelques clics."
+          action={can(user,'devisCreate')&&<button className="btn btn-primary" onClick={()=>setEditor({})}><Ico.plus size={16}/>Nouveau devis</button>}/>}</div>
+    {editor&&<DevisEditor devis={editor} list={list} onClose={()=>setEditor(null)} onPreview={(d)=>setViewDoc(d)}/>}
+    {viewDoc&&<DocumentView record={viewDoc} type="devis" list={list} onChange={setViewDoc} onClose={()=>setViewDoc(null)}/>}
+    {del&&<Confirm danger title="Supprimer le devis" message={`Supprimer ${del.numero} ?`} yes="Supprimer"
+      onClose={()=>setDel(null)} onYes={async()=>{ await remove('devis',del.id,`a supprimé le devis ${del.numero}`); toast('Devis supprimé','err'); }}/>}
+  </>;
+}
+/* =========================================================================
+   ÉDITEUR DE DEVIS (WYSIWYG — page A4 éditable au clic)
+   ------------------------------------------------------------------------- */
+function DevisEditor({devis,onClose,onPreview,list}){
+  const {data,user,save,nextNumber,toast}=useApp();
+  const cur=data.parametres.currency||'€';
+  const [quickPatient,setQuickPatient]=useState(false);
+  const [dirty,setDirty]=useState(false); const dmounted=useRef(false);
+  const [curDevis,setCurDevis]=useState(devis);   // devis en cours d'édition (change via ‹ ›)
+  const isEdit=!!curDevis.id;
+  // Construit l'état du formulaire à partir d'un devis (réutilisé lors de la navigation)
+  const buildForm=(d)=>{
+    const base={
+      patientId:'',date:todayISO(),validite:addDays(todayISO(),30),dateIntervention:'',
+      chirurgien:'',hopital:data.parametres.address||'',modeleId:'',
+      actes:[],inc:[...DEFAULT_INC],exc:[],options:[],importantList:[...DEFAULT_IMPORTANT],
+      paiementNote:DEFAULT_PAIEMENT_NOTE,forfait:0,acompte:0,statut:'brouillon',...d,
+    };
+    if(d.id){ // compat anciens devis (lignes) → actes
+      if((!base.actes||!base.actes.length)&&d.lignes&&d.lignes.length){
+        base.actes=d.lignes.map(l=>({id:uid('a'),acte:l.desc,inclus:''}));
+        if(!Number(base.forfait)) base.forfait=devisTotal(d);
+      }
+      if((!base.importantList||!base.importantList.length)&&d.important) base.importantList=[d.important];
+    }
+    if(!base.actes||!base.actes.length) base.actes=[{id:uid('a'),acte:'',inclus:''}];
+    return base;
+  };
+  const [f,setF]=useState(()=>buildForm(devis));
+
+  // Marque le devis comme modifié dès qu'un champ change (sauf au montage / après un chargement)
+  useEffect(()=>{ if(dmounted.current) setDirty(true); else dmounted.current=true; },[f]);// eslint-disable-line
+
+  // ---- Navigation entre devis, dans l'ordre exact de la liste affichée ----
+  const items=(Array.isArray(list)&&list.length)?list:[];
+  const idx=items.findIndex(x=>x.id===curDevis.id);
+  const showNav=idx>=0;
+  const canPrev=idx>0, canNext=idx>=0&&idx<items.length-1;
+  const [pendingNav,setPendingNav]=useState(null);
+  const loadDevis=(d)=>{ dmounted.current=false; setCurDevis(d); setF(buildForm(d)); setDirty(false); };
+  const navTo=(d)=>{ if(!d) return; if(dirty) setPendingNav(d); else loadDevis(d); };
+  const goPrev=()=>{ if(canPrev) navTo(items[idx-1]); };
+  const goNext=()=>{ if(canNext) navTo(items[idx+1]); };
+  // Raccourcis clavier ← / → (ignorés pendant la saisie ou si une boîte est ouverte)
+  useEffect(()=>{
+    const h=(e)=>{ const t=e.target||{}; const tag=(t.tagName||'').toLowerCase();
+      if(tag==='input'||tag==='textarea'||tag==='select'||t.isContentEditable) return;
+      if(pendingNav||quickPatient) return;
+      if(e.key==='ArrowLeft'&&canPrev){ e.preventDefault(); goPrev(); }
+      else if(e.key==='ArrowRight'&&canNext){ e.preventDefault(); goNext(); }
+    };
+    window.addEventListener('keydown',h); return()=>window.removeEventListener('keydown',h);
+  },[idx,items,canPrev,canNext,dirty,pendingNav,quickPatient]);// eslint-disable-line
+
+  const closeGuard=()=>{ if(dirty && !window.confirm('Des modifications ne sont pas sauvegardées. Voulez-vous continuer ?')) return; onClose(); };
+  useNavOverlay(closeGuard);
+
+  const on={
+    editable:true, patients:data.patients, paiements:data.paiements,
+    set:(k,v)=>setF(s=>({...s,[k]:v})),
+    addActe:()=>setF(s=>({...s,actes:[...(s.actes||[]),{id:uid('a'),acte:'',inclus:''}]})),
+    setActe:(id,k,v)=>setF(s=>({...s,actes:(s.actes||[]).map(a=>a.id===id?{...a,[k]:v}:a)})),
+    rmActe:(id)=>setF(s=>({...s,actes:(s.actes||[]).filter(a=>a.id!==id)})),
+    addInc:()=>setF(s=>({...s,inc:[...(s.inc||[]),'']})),
+    setInc:(i,v)=>setF(s=>({...s,inc:(s.inc||[]).map((x,j)=>j===i?v:x)})),
+    rmInc:(i)=>setF(s=>({...s,inc:(s.inc||[]).filter((_,j)=>j!==i)})),
+    moveInc:(from,to)=>setF(s=>({...s,inc:arrMove(s.inc,from,to)})),
+    addExc:()=>setF(s=>({...s,exc:[...(s.exc||[]),'']})),
+    setExc:(i,v)=>setF(s=>({...s,exc:(s.exc||[]).map((x,j)=>j===i?v:x)})),
+    rmExc:(i)=>setF(s=>({...s,exc:(s.exc||[]).filter((_,j)=>j!==i)})),
+    moveExc:(from,to)=>setF(s=>({...s,exc:arrMove(s.exc,from,to)})),
+    addOpt:()=>setF(s=>({...s,options:[...(s.options||[]),{nom:'',qty:1,prix:0}]})),
+    setOpt:(i,k,v)=>setF(s=>({...s,options:(s.options||[]).map((o,j)=>j===i?{...o,[k]:v}:o)})),
+    rmOpt:(i)=>setF(s=>({...s,options:(s.options||[]).filter((_,j)=>j!==i)})),
+    addImp:()=>setF(s=>({...s,importantList:[...(s.importantList||[]),'']})),
+    setImp:(i,v)=>setF(s=>({...s,importantList:(s.importantList||[]).map((x,j)=>j===i?v:x)})),
+    rmImp:(i)=>setF(s=>({...s,importantList:(s.importantList||[]).filter((_,j)=>j!==i)})),
+  };
+
+  const applyModele=(id)=>{ const m=data.modeles.find(x=>x.id===id); if(!m) return;
+    setF(s=>({...s,modeleId:id,
+      actes:[...(s.actes||[]).filter(a=>a.acte||a.inclus),{id:uid('a'),acte:m.nom,inclus:m.description||''}],
+      inc:(m.inc&&m.inc.length)?[...m.inc]:(s.inc||[]),
+      exc:(m.exc&&m.exc.length)?[...m.exc]:(s.exc||[]),
+      forfait:Number(s.forfait)||m.prixBase}));
+    toast('Modèle appliqué : '+m.nom); };
+
+  const total=totalOf(f); const reste=Math.max(0,total-Number(f.acompte||0));
+
+  const persist=async(statut)=>{
+    let payload={...f,statut:statut||f.statut||'brouillon'};
+    if(!payload.numero) payload.numero=await nextNumber('devis');
+    if(!isEdit) payload.createdBy=user.id;
+    const saved=await save('devis',payload,`${isEdit?'a modifié':'a créé'} le devis ${payload.numero}`);
+    setDirty(false);
+    return saved||payload;
+  };
+  const finish=async(statut,preview)=>{
+    const saved=await persist(statut);
+    toast(isEdit?'Devis mis à jour':'Devis créé : '+saved.numero);
+    onClose(); if(preview&&onPreview) onPreview(saved);
+  };
+
+  return <div className="editor-overlay">
+    <div className="editor">
+      <div className="editor-top">
+        <button className="btn btn-ghost btn-sm" onClick={closeGuard}><Ico.x size={18}/></button>
+        <h3>{isEdit?'Modifier '+(curDevis.numero||'le devis'):'Nouveau devis'}</h3>
+        {showNav&&<div className="editor-nav">
+          <button className="btn btn-sm" disabled={!canPrev} onClick={goPrev} title="Devis précédent (←)"><Ico.chevron size={16} style={{transform:'rotate(180deg)'}}/></button>
+          <span className="editor-nav-c">Devis {idx+1} / {items.length}</span>
+          <button className="btn btn-sm" disabled={!canNext} onClick={goNext} title="Devis suivant (→)"><Ico.chevron size={16}/></button>
+        </div>}
+        <button className="btn" onClick={()=>finish(null,true)}><Ico.print size={15}/>Aperçu / PDF</button>
+        <button className="btn btn-primary" onClick={()=>finish(f.statut,false)}><Ico.check size={16}/>Enregistrer</button>
+      </div>
+      <div className="editor-main">
+        <div className="editor-doc">
+          <DevisDoc record={f} settings={data.parametres} patient={data.patients.find(p=>p.id===f.patientId)}
+            type="devis" paid={Number(f.acompte||0)} editable on={on}/>
+        </div>
+        <div className="editor-side">
+          <h4>Patient &amp; statut</h4>
+          <div className="side-actions">
+            <Select value={f.patientId} onChange={e=>on.set('patientId',e.target.value)}>
+              <option value="">— Choisir un patient —</option>
+              {data.patients.map(p=><option key={p.id} value={p.id}>{patientName(p)}</option>)}</Select>
+            {can(user,'patientCreate')&&<button className="btn btn-sm btn-ghost" onClick={()=>setQuickPatient(true)}><Ico.plus size={14}/>Nouveau patient</button>}
+            <Select value={f.statut} onChange={e=>on.set('statut',e.target.value)}>
+              <option value="brouillon">Brouillon</option><option value="envoye">Envoyé</option><option value="accepte">Accepté</option></Select>
+          </div>
+          <h4>Modèle de devis</h4>
+          <Select value={f.modeleId} onChange={e=>applyModele(e.target.value)}>
+            <option value="">— Appliquer un modèle —</option>
+            {data.modeles.map(m=><option key={m.id} value={m.id}>{m.nom} · {money(m.prixBase,cur)}</option>)}</Select>
+          <h4>Tarification</h4>
+          <Field label="Prix du forfait" hint={cur}><Input type="number" value={f.forfait} onChange={e=>on.set('forfait',Number(e.target.value))}/></Field>
+          <Field label="Acompte à la réservation" hint={cur}><Input type="number" value={f.acompte} onChange={e=>on.set('acompte',Number(e.target.value))}/></Field>
+          <div className="reste-box">
+            <div className="l"><span>Total</span><span className="v tnum">{money(total,cur)}</span></div>
+            <div className="l"><span>Acompte</span><span className="v tnum">{money(Number(f.acompte||0),cur)}</span></div>
+            <div className="l big"><span>Reste à payer</span><span className="v tnum">{money(reste,cur)}</span></div>
+          </div>
+          <h4>Ajouts rapides</h4>
+          <div className="side-actions">
+            <button className="btn btn-sm" onClick={on.addActe}><Ico.plus size={14}/>Acte / intervention</button>
+            <button className="btn btn-sm" onClick={on.addInc}><Ico.plus size={14}/>Prestation incluse</button>
+            <button className="btn btn-sm" onClick={on.addOpt}><Ico.plus size={14}/>Option</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {quickPatient&&<div style={{position:'relative',zIndex:100}}>
+      <PatientForm patient={{}} onClose={()=>setQuickPatient(false)}
+        onSave={async v=>{ const rec=await save('patients',{...v,createdBy:user.id},`a créé le patient ${patientName(v)}`);
+          on.set('patientId',rec.id); setQuickPatient(false); toast('Patient ajouté'); }}/></div>}
+    {pendingNav&&<Modal small title="Modifications non sauvegardées" onClose={()=>setPendingNav(null)} footer={<>
+      <button className="btn" onClick={()=>setPendingNav(null)}>Annuler</button>
+      <button className="btn" onClick={()=>{ const d=pendingNav; setPendingNav(null); loadDevis(d); }}>Continuer sans enregistrer</button>
+      <button className="btn btn-primary" onClick={async()=>{ const d=pendingNav; await persist(f.statut); setPendingNav(null); loadDevis(d); toast('Devis enregistré'); }}><Ico.check size={15}/>Enregistrer et continuer</button>
+    </>}>
+      <p className="muted" style={{margin:0,lineHeight:1.6}}>Des modifications ne sont pas sauvegardées. Voulez-vous enregistrer avant de changer de devis&nbsp;?</p>
+    </Modal>}
+  </div>;
+}
+function ListEditor({label,items,onChange,ph}){
+  const [v,setV]=useState('');
+  const add=()=>{ if(v.trim()){ onChange([...(items||[]),v.trim()]); setV(''); } };
+  return <Field label={label}>
+    <div style={{display:'flex',gap:8,marginBottom:8}}>
+      <Input value={v} placeholder={ph} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),add())}/>
+      <button className="btn" onClick={add}><Ico.plus size={15}/></button></div>
+    <div style={{display:'flex',flexWrap:'wrap',gap:7}}>{(items||[]).map((x,i)=>(
+      <span key={i} className="chip">{x}<button onClick={()=>onChange(items.filter((_,j)=>j!==i))}><Ico.x size={13}/></button></span>))}</div>
+  </Field>;
+}
+/* =========================================================================
+   FACTURES
+   ------------------------------------------------------------------------- */
+function FacturesView(){
+  const {data,user,remove,toast}=useApp();
+  const [detail,setDetail]=useState(null); const [del,setDel]=useState(null);
+  const cur=data.parametres.currency||'€';
+  const list=[...data.factures].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Factures</h2>
+      <div className="desc">{list.length} facture(s)</div></div></div><div className="sp"/></div>
+    <div className="card">{list.length? <table>
+      <thead><tr><th>N°</th><th>Patient</th><th>Date</th><th>Statut</th><th className="r" style={{textAlign:'right'}}>Payé / Total</th><th></th></tr></thead>
+      <tbody>{list.map(f=>{ const p=data.patients.find(x=>x.id===f.patientId); const pays=factPayments(data.paiements,f.id);
+        const paid=pays.reduce((s,pm)=>s+Number(pm.montant||0),0); const tot=totalOf(f);
+        return <tr key={f.id} className="clickable" onClick={()=>setDetail(f)}>
+          <td className="t-strong">{f.numero}</td><td>{patientName(p)}</td><td className="muted">{fmtDate(f.date)}</td>
+          <td><StatusBadge s={factureStatus(f,pays)}/></td>
+          <td style={{textAlign:'right'}}><span className="tnum t-strong">{money(paid,cur)}</span> <span className="muted tnum">/ {money(tot,cur)}</span></td>
+          <td onClick={e=>e.stopPropagation()} style={{textAlign:'right',whiteSpace:'nowrap'}}>
+            {(can(user,'paymentEdit')||can(user,'all')||can(user,'factureCreate'))&&<button className="btn btn-ghost btn-sm" title="Paiements" onClick={()=>setDetail(f)}><Ico.wallet size={15}/></button>}
+            {can(user,'all')&&<button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={()=>setDel(f)}><Ico.trash size={15}/></button>}
+          </td></tr>;})}</tbody></table>
+      : <Empty icon={Ico.invoice} title="Aucune facture" sub="Transformez un devis accepté en facture depuis le module Devis."/>}</div>
+    {detail&&<FactureDetail facture={detail} onClose={()=>setDetail(null)}/>}
+    {del&&<Confirm danger title="Supprimer la facture" message={`Supprimer ${del.numero} ?`} yes="Supprimer"
+      onClose={()=>setDel(null)} onYes={async()=>{ await remove('factures',del.id,`a supprimé la facture ${del.numero}`); toast('Facture supprimée','err'); }}/>}
+  </>;
+}
+function FactureDetail({facture,onClose}){
+  const {data,user,save,remove,toast}=useApp();
+  const cur=data.parametres.currency||'€';
+  const f=data.factures.find(x=>x.id===facture.id)||facture;     // version à jour
+  const p=data.patients.find(x=>x.id===f.patientId)||{};
+  const pays=factPayments(data.paiements,f.id);
+  const tot=totalOf(f);
+  const totAc=sumPays(pays,'acompte'), totPa=sumPays(pays,'paiement');
+  const totalPaid=totAc+totPa; const reste=Math.max(0,tot-totalPaid);
+  const statut=factureStatus(f,pays);
+  const [edit,setEdit]=useState(null);   // {payment?, type}
+  const [del,setDel]=useState(null);
+  const [viewDoc,setViewDoc]=useState(false);
+  const canEdit=can(user,'paymentEdit')||can(user,'all')||can(user,'factureCreate');
+  const setStatut=(st,msg)=>save('factures',{...f,statut:st},msg);
+
+  return <Drawer wide title={'Facture '+f.numero} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Fermer</button>
+      <button className="btn btn-primary" onClick={()=>setViewDoc(true)}><Ico.print size={16}/>Aperçu / PDF</button></>}>
+
+    <div className="sec-head" style={{marginTop:0}}><div><h2 style={{fontSize:16,margin:0}}>Résumé financier</h2>
+      <div className="desc" style={{display:'flex',alignItems:'center',gap:8}}>{patientName(p)} · <StatusBadge s={statut}/></div></div></div>
+    <div className="grid kpis" style={{marginBottom:16}}>
+      <Kpi label="Total facture" value={money(tot,cur)} icon={Ico.invoice}/>
+      <Kpi label="Total acomptes" value={money(totAc,cur)} icon={Ico.wallet}/>
+      <Kpi label="Total paiements" value={money(totPa,cur)} icon={Ico.pay}/>
+      <Kpi label="Reste à payer" value={money(reste,cur)} tone={reste<=0&&tot>0?'ok':''} icon={Ico.euro}/>
+    </div>
+
+    {canEdit&&<div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:18}}>
+      {statut!=='payee'&&f.statut!=='envoye'&&f.statut!=='annulee'&&<button className="btn btn-sm" onClick={()=>setStatut('envoye',`a marqué ${f.numero} comme envoyée`)}><Ico.send size={14}/>Marquer envoyée</button>}
+      {f.statut!=='annulee'
+        ? <button className="btn btn-sm btn-danger" onClick={()=>setStatut('annulee',`a annulé la facture ${f.numero}`)}><Ico.x size={14}/>Annuler la facture</button>
+        : <button className="btn btn-sm" onClick={()=>setStatut('brouillon',`a réactivé la facture ${f.numero}`)}><Ico.check size={14}/>Réactiver</button>}
+    </div>}
+
+    <div className="sec-head"><div><h2 style={{fontSize:16,margin:0}}>Historique des paiements</h2>
+      <div className="desc">{pays.length} mouvement(s)</div></div><div className="sp"/>
+      {canEdit&&<><button className="btn btn-sm" onClick={()=>setEdit({type:'acompte'})}><Ico.plus size={14}/>Ajouter un acompte</button>
+      <button className="btn btn-primary btn-sm" onClick={()=>setEdit({type:'paiement'})}><Ico.plus size={14}/>Ajouter un paiement</button></>}</div>
+    <div className="card">{pays.length? <table>
+      <thead><tr><th>Date</th><th>Type</th><th>Mode</th><th className="r" style={{textAlign:'right'}}>Montant</th><th></th></tr></thead>
+      <tbody>{pays.map(pm=>{ const isAc=pm.type==='acompte';
+        return <tr key={pm.id}>
+          <td className="muted">{fmtDate(pm.date)}</td>
+          <td><span className={"badge "+(isAc?'b-wait':'b-paid')}><span className="dot"></span>{isAc?'Acompte':'Paiement'}</span></td>
+          <td>{pm.mode||'—'}</td>
+          <td className="tnum t-strong" style={{textAlign:'right'}}>{money(pm.montant,cur)}</td>
+          <td style={{textAlign:'right',whiteSpace:'nowrap'}}>{canEdit&&<>
+            <button className="btn btn-ghost btn-sm" title="Modifier" onClick={()=>setEdit({payment:pm,type:isAc?'acompte':'paiement'})}><Ico.edit size={15}/></button>
+            <button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={()=>setDel(pm)}><Ico.trash size={15}/></button></>}</td>
+        </tr>;})}</tbody></table>
+      : <Empty icon={Ico.wallet} title="Aucun paiement" sub="Ajoutez un acompte ou un paiement avec les boutons ci-dessus."/>}</div>
+
+    {edit&&<PaymentEditor facture={f} payment={edit.payment} type={edit.type} reste={reste} onClose={()=>setEdit(null)}/>}
+    {del&&<Confirm danger title="Supprimer ce paiement"
+      message={`Voulez-vous vraiment supprimer ce ${del.type==='acompte'?'acompte':'paiement'} de ${money(del.montant,cur)} ?`} yes="Supprimer"
+      onClose={()=>setDel(null)} onYes={async()=>{ await remove('paiements',del.id,`a supprimé un ${del.type==='acompte'?'acompte':'paiement'} de ${money(del.montant,cur)} sur ${f.numero}`); toast('Paiement supprimé','err'); }}/>}
+    {viewDoc&&<DocumentView record={f} type="facture" onClose={()=>setViewDoc(false)}/>}
+  </Drawer>;
+}
+function PaymentEditor({facture,payment,type,reste,onClose}){
+  const {data,save,toast}=useApp(); const cur=data.parametres.currency||'€';
+  const isEdit=!!(payment&&payment.id);
+  const [f,setF]=useState(()=>({
+    type:(payment&&payment.type)||type||'paiement',
+    montant: payment? payment.montant : (type==='acompte'?'':(reste||'')),
+    date:(payment&&payment.date)||todayISO(),
+    mode:(payment&&payment.mode)||'Virement bancaire',
+  }));
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  const label=f.type==='acompte'?'acompte':'paiement';
+  const submit=async()=>{
+    const rec={...(payment||{}),refId:facture.id,refNum:facture.numero,type:f.type,montant:Number(f.montant),date:f.date,mode:f.mode};
+    await save('paiements',rec,`${isEdit?'a modifié':'a ajouté'} un ${label} de ${money(Number(f.montant),cur)} sur ${facture.numero}`);
+    toast(isEdit?'Mouvement modifié':'Mouvement ajouté'); onClose();
+  };
+  return <Modal small title={(isEdit?'Modifier ':'Ajouter ')+(f.type==='acompte'?'un acompte':'un paiement')} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn btn-primary" disabled={!(Number(f.montant)>0)} onClick={submit}><Ico.check size={16}/>{isEdit?'Enregistrer':'Ajouter'}</button></>}>
+    <Field label="Type"><Select value={f.type} onChange={e=>set('type',e.target.value)}>
+      <option value="acompte">Acompte</option><option value="paiement">Paiement</option></Select></Field>
+    <div className="row2">
+      <Field label="Montant" hint={cur}><Input type="number" value={f.montant} onChange={e=>set('montant',e.target.value)}/></Field>
+      <Field label="Date"><Input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field></div>
+    <Field label="Mode de paiement"><Select value={f.mode} onChange={e=>set('mode',e.target.value)}>
+      {PAY_MODES.map(m=><option key={m}>{m}</option>)}</Select></Field>
+  </Modal>;
+}
+
+/* =========================================================================
+   PAIEMENTS
+   ------------------------------------------------------------------------- */
+function PaiementsView(){
+  const {data}=useApp(); const cur=data.parametres.currency||'€';
+  const list=[...data.paiements].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=list.reduce((s,p)=>s+Number(p.montant||0),0);
+  const byMode={}; list.forEach(p=>byMode[p.mode]=(byMode[p.mode]||0)+Number(p.montant||0));
+  return <>
+    <div className="grid kpis" style={{marginBottom:18}}>
+      <Kpi label="Total encaissé" value={money(total,cur)} icon={Ico.wallet} tone="ok"/>
+      <Kpi label="Nombre de paiements" value={list.length} icon={Ico.pay}/>
+      {Object.entries(byMode).slice(0,3).map(([m,v])=><Kpi key={m} label={m} value={money(v,cur)}/>)}
+    </div>
+    <div className="card">{list.length? <table>
+      <thead><tr><th>Date</th><th>Facture</th><th>Mode</th><th className="r" style={{textAlign:'right'}}>Montant</th></tr></thead>
+      <tbody>{list.map(p=><tr key={p.id}><td className="muted">{fmtDate(p.date)}</td>
+        <td className="t-strong">{p.refNum||'—'}</td><td><span className="chip">{p.mode}</span></td>
+        <td className="tnum t-strong" style={{textAlign:'right'}}>{money(p.montant,cur)}</td></tr>)}</tbody></table>
+      : <Empty icon={Ico.wallet} title="Aucun paiement" sub="Les encaissements apparaîtront ici."/>}</div>
+  </>;
+}
+
+/* =========================================================================
+   MODÈLES & OPTIONS
+   ------------------------------------------------------------------------- */
+function ModelesView(){
+  const {data,user,save,remove,toast}=useApp(); const cur=data.parametres.currency||'€';
+  const [edit,setEdit]=useState(null); const admin=can(user,'catalogManage');
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Modèles de devis</h2>
+      <div className="desc">{data.modeles.length} modèle(s)</div></div></div><div className="sp"/>
+      {admin&&<button className="btn btn-primary" onClick={()=>setEdit({inc:[],exc:[]})}><Ico.plus size={16}/>Nouveau modèle</button>}</div>
+    <div className="grid" style={{gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))'}}>
+      {data.modeles.map(m=><div key={m.id} className="card card-pad">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+          <div><div className="t-strong" style={{fontSize:15}}>{m.nom}</div>
+            <div className="muted" style={{fontSize:12}}>{m.categorie}</div></div>
+          <span className="badge b-part" style={{whiteSpace:'nowrap'}}>{money(m.prixBase,cur)}</span></div>
+        <p className="muted" style={{fontSize:12.5,margin:'10px 0',lineHeight:1.55}}>{(m.description||'').slice(0,120)}{(m.description||'').length>120?'…':''}</p>
+        <div className="muted" style={{fontSize:11.5}}>{(m.inc||[]).length} incluses · {(m.exc||[]).length} exclues</div>
+        {admin&&<div style={{display:'flex',gap:8,marginTop:12}}>
+          <button className="btn btn-sm" onClick={()=>setEdit(m)}><Ico.edit size={14}/>Modifier</button>
+          <button className="btn btn-sm btn-ghost btn-danger" onClick={async()=>{await remove('modeles',m.id);toast('Modèle supprimé','err');}}><Ico.trash size={14}/></button></div>}
+      </div>)}</div>
+    {edit&&<ModeleForm modele={edit} onClose={()=>setEdit(null)}
+      onSave={async v=>{ await save('modeles',v); toast('Modèle enregistré'); setEdit(null); }}/>}
+  </>;
+}
+function ModeleForm({modele,onClose,onSave}){
+  const [f,setF]=useState({nom:'',categorie:'Chirurgie esthétique',prixBase:0,description:'',inc:[],exc:[],...modele});
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  return <Drawer title={modele.id?'Modifier le modèle':'Nouveau modèle'} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn btn-primary" disabled={!f.nom} onClick={()=>onSave(f)}><Ico.check size={16}/>Enregistrer</button></>}>
+    <div className="row2"><Field label="Nom"><Input value={f.nom} onChange={e=>set('nom',e.target.value)}/></Field>
+      <Field label="Prix de base"><Input type="number" value={f.prixBase} onChange={e=>set('prixBase',Number(e.target.value))}/></Field></div>
+    <Field label="Catégorie"><Select value={f.categorie} onChange={e=>set('categorie',e.target.value)}>
+      {['Chirurgie esthétique','Chirurgie dentaire','Greffe capillaire','Médecine esthétique'].map(c=><option key={c}>{c}</option>)}</Select></Field>
+    <Field label="Description"><Textarea value={f.description} onChange={e=>set('description',e.target.value)}/></Field>
+    <ListEditor label="Prestations incluses" items={f.inc} onChange={v=>set('inc',v)} ph="ex. 2 nuits d'hospitalisation"/>
+    <ListEditor label="Prestations non incluses" items={f.exc} onChange={v=>set('exc',v)} ph="ex. Vols internationaux"/>
+  </Drawer>;
+}
+function OptionsView(){
+  const {data,user,save,remove,toast}=useApp(); const cur=data.parametres.currency||'€';
+  const [edit,setEdit]=useState(null); const admin=can(user,'catalogManage');
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Options</h2>
+      <div className="desc">{data.options.length} option(s)</div></div></div><div className="sp"/>
+      {admin&&<button className="btn btn-primary" onClick={()=>setEdit({})}><Ico.plus size={16}/>Nouvelle option</button>}</div>
+    <div className="card"><table>
+      <thead><tr><th>Option</th><th className="r" style={{textAlign:'right'}}>Prix</th><th></th></tr></thead>
+      <tbody>{data.options.map(o=><tr key={o.id}><td className="t-strong">{o.nom}</td>
+        <td className="tnum" style={{textAlign:'right'}}>{money(o.prix,cur)}</td>
+        <td style={{textAlign:'right'}}>{admin&&<><button className="btn btn-ghost btn-sm" onClick={()=>setEdit(o)}><Ico.edit size={14}/></button>
+          <button className="btn btn-ghost btn-sm btn-danger" onClick={async()=>{await remove('options',o.id);toast('Option supprimée','err');}}><Ico.trash size={14}/></button></>}</td></tr>)}</tbody></table></div>
+    {edit&&<Modal small title={edit.id?'Modifier l\'option':'Nouvelle option'} onClose={()=>setEdit(null)}
+      footer={<><button className="btn" onClick={()=>setEdit(null)}>Annuler</button>
+        <button className="btn btn-primary" onClick={async()=>{await save('options',edit);toast('Option enregistrée');setEdit(null);}}><Ico.check size={16}/>Enregistrer</button></>}>
+      <Field label="Nom"><Input value={edit.nom||''} onChange={e=>setEdit({...edit,nom:e.target.value})}/></Field>
+      <Field label="Prix"><Input type="number" value={edit.prix||0} onChange={e=>setEdit({...edit,prix:Number(e.target.value)})}/></Field>
+    </Modal>}
+  </>;
+}
+
+/* =========================================================================
+   HISTORIQUE
+   ------------------------------------------------------------------------- */
+function HistoriqueView(){
+  const {data}=useApp();
+  const list=[...(data.historique||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const groups={};
+  list.forEach(h=>{ const d=fmtDate(h.date); (groups[d]=groups[d]||[]).push(h); });
+  return <div className="card card-pad">
+    <div className="sec-head"><div><h2>Historique</h2><div className="desc">Toutes les actions de l'équipe</div></div></div>
+    {list.length? Object.entries(groups).map(([day,items])=><div key={day} style={{marginBottom:18}}>
+      <div className="muted" style={{fontSize:12,fontWeight:600,margin:'0 0 8px'}}>{day}</div>
+      {items.map(h=><div key={h.id} style={{display:'flex',gap:12,padding:'8px 0',borderLeft:'2px solid var(--line)',paddingLeft:14,marginLeft:4}}>
+        <span className="tnum muted" style={{fontSize:12,minWidth:46}}>{new Date(h.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
+        <span style={{fontSize:13.5}}><b>{h.user}</b> {h.message}</span></div>)}
+    </div>) : <Empty icon={Ico.hist} title="Aucune action" sub="L'historique se remplira au fil de l'activité."/>}
+  </div>;
+}
+/* =========================================================================
+   PARAMÈTRES
+   ------------------------------------------------------------------------- */
+function ParametresView(){
+  const {data,user,saveSettings,toast,resetPassword}=useApp();
+  const [s,setS]=useState({...DEFAULT_SETTINGS,...data.parametres});
+  const [tab,setTab]=useState('societe');
+  const [pwd,setPwd]=useState({email:user.email,np:'',np2:''});
+  const set=(k,v)=>setS(x=>({...x,[k]:v}));
+  const admin=can(user,'all');
+  const importLogo=(e)=>{ const file=e.target.files?.[0]; if(!file) return;
+    const r=new FileReader(); r.onload=()=>set('logo',r.result); r.readAsDataURL(file); };
+
+  return <div style={{maxWidth:760}}>
+    <div className="seg" style={{marginBottom:18}}>
+      {[['societe','Société'],['banque','Paiement & légal'],['connexion','Connexion'],['securite','Sécurité']].map(([k,l])=>(
+        <button key={k} className={tab===k?'on':''} onClick={()=>setTab(k)}>{l}</button>))}</div>
+
+    {tab==='societe'&&<div className="card card-pad">
+      <Field label="Logo" hint="apparaît sur tous les documents">
+        <div style={{display:'flex',alignItems:'center',gap:16}}>
+          <div style={{width:120,height:64,border:'1px dashed var(--line)',borderRadius:10,display:'grid',placeItems:'center',background:'var(--surface)',overflow:'hidden'}}>
+            {s.logo? <img src={s.logo} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}/> : <span className="muted" style={{fontSize:11}}>Aucun logo</span>}</div>
+          <label className="btn"><Ico.plus size={15}/>Importer<input type="file" accept="image/*" hidden onChange={importLogo}/></label>
+          {s.logo&&<button className="btn btn-ghost btn-sm btn-danger" onClick={()=>set('logo','')}>Retirer</button>}</div></Field>
+      <div className="row2"><Field label="Nom de la société"><Input value={s.company} onChange={e=>set('company',e.target.value)}/></Field>
+        <Field label="Slogan"><Input value={s.tagline} onChange={e=>set('tagline',e.target.value)}/></Field></div>
+      <Field label="Titre du document" hint="affiché en haut du devis"><Input value={s.docTitle||''} placeholder="DEVIS MÉDICAL PREMIUM" onChange={e=>set('docTitle',e.target.value)}/></Field>
+      <Field label="Adresse"><Input value={s.address} onChange={e=>set('address',e.target.value)}/></Field>
+      <div className="row2"><Field label="Téléphone"><Input value={s.phone} onChange={e=>set('phone',e.target.value)}/></Field>
+        <Field label="WhatsApp"><Input value={s.whatsapp} onChange={e=>set('whatsapp',e.target.value)}/></Field></div>
+      <div className="row2"><Field label="Email"><Input value={s.email} onChange={e=>set('email',e.target.value)}/></Field>
+        <Field label="Site internet"><Input value={s.website} onChange={e=>set('website',e.target.value)}/></Field></div>
+    </div>}
+
+    {tab==='banque'&&<div className="card card-pad">
+      <div className="row2"><Field label="IBAN"><Input value={s.iban} onChange={e=>set('iban',e.target.value)}/></Field>
+        <Field label="BIC"><Input value={s.bic} onChange={e=>set('bic',e.target.value)}/></Field></div>
+      <div className="row2"><Field label="N° TVA" hint="(optionnel)"><Input value={s.vat} onChange={e=>set('vat',e.target.value)}/></Field>
+        <Field label="Devise"><Select value={s.currency} onChange={e=>set('currency',e.target.value)}>{['€','$','£','₺'].map(c=><option key={c}>{c}</option>)}</Select></Field></div>
+      <Field label="Conditions générales / paiement"><Textarea style={{minHeight:90}} value={s.cgv} onChange={e=>set('cgv',e.target.value)}/></Field>
+      <Field label="Conditions importantes" hint="bloc encadré sur le document"><Textarea style={{minHeight:90}} value={s.important||''} onChange={e=>set('important',e.target.value)}/></Field>
+      <Field label="Mentions légales (pied de page)"><Textarea value={s.legal} onChange={e=>set('legal',e.target.value)}/></Field>
+    </div>}
+
+    {tab==='connexion'&&<div className="card card-pad">
+      <h2 style={{fontSize:15,marginTop:0}}>Synchronisation Google Sheets</h2>
+      <p className="muted" style={{fontSize:13,lineHeight:1.6}}>
+        L'application fonctionne en <b>mode local</b> tant qu'aucune URL n'est renseignée. Pour activer la synchro temps réel entre Veys, Andréa et Ceyda, déployez le script <b>Code.gs</b> (fourni) en tant que Web App, puis collez l'URL ci-dessous dans le fichier <code>devis.html</code> (variable <code>CONFIG.APPS_SCRIPT_URL</code>).</p>
+      <div className="card card-pad" style={{background:'var(--surface)',fontSize:13,lineHeight:1.7}}>
+        <b>État actuel :</b> {API.remote()
+          ? <span className="badge b-paid" style={{marginLeft:6}}><span className="dot"></span>Connecté à Google Sheets</span>
+          : <span className="badge b-wait" style={{marginLeft:6}}><span className="dot"></span>Mode local</span>}
+      </div>
+      <p className="muted" style={{fontSize:12.5,marginTop:14}}>Synchronisation automatique toutes les {CONFIG.POLL_MS/1000} s.</p>
+    </div>}
+
+    {tab==='securite'&&<div className="card card-pad">
+      <h2 style={{fontSize:15,marginTop:0}}>Changer un mot de passe</h2>
+      {admin? <Select value={pwd.email} onChange={e=>setPwd({...pwd,email:e.target.value})} style={{marginBottom:12}}>
+        {data.utilisateurs.map(u=><option key={u.id} value={u.email}>{userLabel(u)} ({u.email})</option>)}</Select>
+        : <p className="muted" style={{fontSize:13}}>Vous modifiez votre propre mot de passe ({user.email}).</p>}
+      <div className="row2"><Field label="Nouveau mot de passe"><Input type="password" value={pwd.np} onChange={e=>setPwd({...pwd,np:e.target.value})}/></Field>
+        <Field label="Confirmer"><Input type="password" value={pwd.np2} onChange={e=>setPwd({...pwd,np2:e.target.value})}/></Field></div>
+      <button className="btn btn-primary" disabled={!pwd.np||pwd.np!==pwd.np2}
+        onClick={async()=>{ try{ await resetPassword(pwd.email,pwd.np); toast('Mot de passe mis à jour'); setPwd({...pwd,np:'',np2:''}); }catch(e){ toast(e.message||'Erreur','err'); } }}>
+        <Ico.check size={16}/>Mettre à jour</button>
+      <p className="muted" style={{fontSize:12,marginTop:14,lineHeight:1.6}}>Pensez à changer les mots de passe par défaut dès la première utilisation.</p>
+    </div>}
+
+    {tab!=='connexion'&&tab!=='securite'&&<div style={{marginTop:16}}>
+      <button className="btn btn-primary" onClick={async()=>{ await saveSettings(s); toast('Paramètres enregistrés'); }}>
+        <Ico.check size={16}/>Enregistrer les paramètres</button></div>}
+  </div>;
+}
+
+/* =========================================================================
+   GESTION DES UTILISATEURS (admin)
+   ------------------------------------------------------------------------- */
+function UtilisateursView(){
+  const {data,user,saveUser,removeUser,toast,log}=useApp();
+  const [form,setForm]=useState(null);
+  const [reset,setReset]=useState(null);
+  const [del,setDel]=useState(null);
+  if(!isAdmin(user)) return <Empty icon={Ico.users} title="Accès réservé" sub="Seul l'administrateur peut gérer les utilisateurs."/>;
+  const users=data.utilisateurs||[];
+  const toggleStatut=async(u)=>{ const statut=u.statut==='desactive'?'actif':'desactive';
+    try{ await saveUser({...u,statut}); toast(statut==='actif'?'Compte activé':'Compte désactivé');
+      log(`a ${statut==='actif'?'activé':'désactivé'} le compte ${userLabel(u)}`);
+    }catch(e){ toast(e.message||'Erreur','err'); } };
+  return <>
+    <div className="toolbar"><div className="sec-head" style={{margin:0}}><div><h2>Utilisateurs</h2>
+      <div className="desc">{users.length} compte(s)</div></div></div><div className="sp"/>
+      <button className="btn btn-primary" onClick={()=>setForm({})}><Ico.plus size={16}/>Nouvel utilisateur</button></div>
+    <div className="card">{users.length? <table>
+      <thead><tr><th>Utilisateur</th><th>Rôle</th><th>Fonction</th><th>Statut</th><th>Dernière connexion</th><th></th></tr></thead>
+      <tbody>{users.map(u=>(
+        <tr key={u.id}>
+          <td><div style={{display:'flex',alignItems:'center',gap:10}}>
+            {u.photo? <img src={u.photo} className="uav"/> : <div className="uav ph">{initials(userLabel(u))}</div>}
+            <div style={{minWidth:0}}><div className="t-strong">{userLabel(u)}</div><div className="muted" style={{fontSize:12}}>{u.email}</div></div></div></td>
+          <td>{ROLES[u.role]?.label||u.role}</td>
+          <td className="muted">{u.fonction||'—'}</td>
+          <td>{u.statut==='desactive'? <span className="badge b-cancel"><span className="dot"/>Désactivé</span> : <span className="badge b-paid"><span className="dot"/>Actif</span>}</td>
+          <td className="muted">{u.lastLogin?fmtDateTime(u.lastLogin):'Jamais'}</td>
+          <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+            <button className="btn btn-ghost btn-sm" title="Modifier" onClick={()=>setForm(u)}><Ico.edit size={15}/></button>
+            <button className="btn btn-ghost btn-sm" title="Mot de passe" onClick={()=>setReset(u)}><Ico.lock size={15}/></button>
+            <button className="btn btn-ghost btn-sm" title={u.statut==='desactive'?'Activer':'Désactiver'} onClick={()=>toggleStatut(u)}><Ico.power size={15}/></button>
+            {u.id!==user.id&&<button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={()=>setDel(u)}><Ico.trash size={15}/></button>}
+          </td></tr>))}</tbody></table>
+      : <Empty icon={Ico.users} title="Aucun utilisateur" sub="Ajoutez les membres de votre équipe."
+          action={<button className="btn btn-primary" onClick={()=>setForm({})}><Ico.plus size={16}/>Nouvel utilisateur</button>}/>}</div>
+    {form&&<UserForm draft={form} onClose={()=>setForm(null)}/>}
+    {reset&&<ResetPwd u={reset} onClose={()=>setReset(null)}/>}
+    {del&&<Confirm danger title="Supprimer l'utilisateur" message={`Supprimer définitivement ${userLabel(del)} ? Cette action est irréversible.`} yes="Supprimer"
+      onClose={()=>setDel(null)} onYes={async()=>{ try{ await removeUser(del.id); toast('Utilisateur supprimé','err'); log(`a supprimé l'utilisateur ${userLabel(del)}`);}catch(e){ toast(e.message||'Erreur','err'); } }}/>}
+  </>;
+}
+
+function UserForm({draft,onClose}){
+  const {saveUser,toast,log,user:me}=useApp();
+  const isEdit=!!draft.id; const isSelf=isEdit&&draft.id===me.id;
+  const [f,setF]=useState({prenom:'',nom:'',email:'',telephone:'',fonction:'',role:'commerciale',statut:'actif',photo:'',password:'',...draft});
+  const [perms,setPerms]=useState(()=> (draft.perms&&Object.keys(draft.perms).length)?{...draft.perms}:roleDefaultPerms(draft.role||'commerciale'));
+  const [showPerms,setShowPerms]=useState(false);
+  const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
+  const set=(k,v)=>setF(s=>({...s,[k]:v}));
+  const changeRole=(role)=>{ set('role',role); setPerms(roleDefaultPerms(role)); };
+  const onPhoto=async(e)=>{ const file=e.target.files?.[0]; if(!file) return; try{ set('photo',await resizeImage(file)); }catch(_){} };
+  const save=async()=>{ setErr('');
+    if(!f.email) return setErr('Email requis.');
+    if(!isEdit&&!f.password) return setErr('Mot de passe requis pour un nouvel utilisateur.');
+    if(f.password&&f.password.length<6) return setErr('Mot de passe : 6 caractères minimum.');
+    setBusy(true);
+    try{
+      const payload={id:f.id,prenom:f.prenom,nom:f.nom,email:f.email,telephone:f.telephone,fonction:f.fonction,
+        role:f.role,statut:f.statut,photo:f.photo,perms:f.role==='pdg'?{}:perms};
+      if(f.password) payload.password=f.password;
+      await saveUser(payload);
+      toast(isEdit?'Utilisateur mis à jour':'Utilisateur créé');
+      log(`${isEdit?'a modifié':'a créé'} l'utilisateur ${userLabel(f)}`);
+      onClose();
+    }catch(e){ setErr(e.message||'Erreur'); } finally{ setBusy(false); }
+  };
+  return <Drawer title={isEdit?"Modifier l'utilisateur":'Nouvel utilisateur'} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn btn-primary" disabled={busy} onClick={save}>{busy?<span className="spin"/>:<><Ico.check size={16}/>Enregistrer</>}</button></>}>
+    <div style={{display:'flex',gap:16,alignItems:'center',marginBottom:8}}>
+      {f.photo? <img src={f.photo} className="uav lg"/> : <div className="uav lg ph">{initials(userLabel(f)||'?')}</div>}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <label className="btn btn-sm"><Ico.plus size={14}/>Photo<input type="file" accept="image/*" hidden onChange={onPhoto}/></label>
+        {f.photo&&<button className="btn btn-ghost btn-sm btn-danger" onClick={()=>set('photo','')}>Retirer</button>}</div>
+    </div>
+    <div className="row2"><Field label="Prénom"><Input value={f.prenom} onChange={e=>set('prenom',e.target.value)}/></Field>
+      <Field label="Nom"><Input value={f.nom} onChange={e=>set('nom',e.target.value)}/></Field></div>
+    <Field label="Fonction" hint="(ex. Commerciale, Coordinatrice)"><Input value={f.fonction} onChange={e=>set('fonction',e.target.value)}/></Field>
+    <div className="row2"><Field label="Email (identifiant)"><Input type="email" value={f.email} onChange={e=>set('email',e.target.value)}/></Field>
+      <Field label="Téléphone"><Input value={f.telephone} onChange={e=>set('telephone',e.target.value)}/></Field></div>
+    <div className="row2">
+      <Field label="Rôle" hint={isSelf?'(non modifiable sur soi)':''}><Select value={f.role} onChange={e=>changeRole(e.target.value)} disabled={isSelf}>
+        {Object.entries(ROLES).map(([k,r])=><option key={k} value={k}>{r.label}</option>)}</Select></Field>
+      <Field label="Statut" hint={isSelf?'(non modifiable sur soi)':''}><Select value={f.statut} onChange={e=>set('statut',e.target.value)} disabled={isSelf}>
+        <option value="actif">Actif</option><option value="desactive">Désactivé</option></Select></Field></div>
+    <Field label={isEdit?'Nouveau mot de passe':'Mot de passe'} hint={isEdit?'(laisser vide pour ne pas changer)':'(6 caractères min.)'}>
+      <Input type="password" value={f.password} placeholder={isEdit?'••••••••':''} onChange={e=>set('password',e.target.value)}/></Field>
+    {f.role!=='pdg'? <div className="card card-pad" style={{marginTop:4}}>
+      <button className="btn btn-ghost btn-sm" onClick={()=>setShowPerms(v=>!v)}><Ico.cog size={15}/>{showPerms?'Masquer les permissions':'Permissions détaillées'}</button>
+      {showPerms&&<div style={{marginTop:12}}>{PERMS.map(grp=><div key={grp.g} style={{marginBottom:12}}>
+        <div className="muted" style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{grp.g}</div>
+        {grp.items.map(([k,lbl])=><label key={k} className="permrow">
+          <input type="checkbox" checked={!!perms[k]} onChange={e=>setPerms(p=>({...p,[k]:e.target.checked}))}/>{lbl}</label>)}
+      </div>)}</div>}
+    </div>
+    : <p className="muted" style={{fontSize:12.5,marginTop:4}}>Le rôle <b>PDG / Administrateur</b> dispose d'un accès complet à toutes les fonctions.</p>}
+    {err&&<div style={{color:'var(--bad)',fontSize:13,marginTop:10,fontWeight:500}}>{err}</div>}
+  </Drawer>;
+}
+
+function ResetPwd({u,onClose}){
+  const {resetPassword,toast,log}=useApp();
+  const [np,setNp]=useState(''); const [np2,setNp2]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
+  const go=async()=>{ setErr('');
+    if(np.length<6) return setErr('6 caractères minimum.');
+    if(np!==np2) return setErr('Les mots de passe ne correspondent pas.');
+    setBusy(true);
+    try{ await resetPassword(u.email,np); toast('Mot de passe réinitialisé'); log(`a réinitialisé le mot de passe de ${userLabel(u)}`); onClose(); }
+    catch(e){ setErr(e.message||'Erreur'); } finally{ setBusy(false); } };
+  return <Modal small title={'Mot de passe — '+userLabel(u)} onClose={onClose}
+    footer={<><button className="btn" onClick={onClose}>Annuler</button>
+      <button className="btn btn-primary" disabled={busy} onClick={go}>{busy?<span className="spin"/>:'Réinitialiser'}</button></>}>
+    <div className="row2"><Field label="Nouveau mot de passe"><Input type="password" value={np} autoFocus onChange={e=>setNp(e.target.value)}/></Field>
+      <Field label="Confirmer"><Input type="password" value={np2} onChange={e=>setNp2(e.target.value)} onKeyDown={e=>e.key==='Enter'&&go()}/></Field></div>
+    {err&&<div style={{color:'var(--bad)',fontSize:13,fontWeight:500}}>{err}</div>}
+  </Modal>;
+}
+
+/* =========================================================================
+   RENDU
+   ------------------------------------------------------------------------- */
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

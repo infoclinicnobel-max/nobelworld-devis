@@ -1,0 +1,9 @@
+PWA DEVIS NOBEL — INSTALLATION
+1) Copier manifest.json, sw.js, icon-192.png, icon-512.png, icon-512-maskable.png
+   À LA RACINE du dépôt de l'application Devis (à côté de son index.html).
+2) Dans le <head> de l'index.html du Devis, ajouter (si absent) :
+   <link rel="manifest" href="./manifest.json"/>
+   <meta name="theme-color" content="#0B1F3A"/>
+   <meta name="mobile-web-app-capable" content="yes"/>
+   <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");</script>
+3) Déployer. Ouvrir le site en HTTPS → icône "Installer" dans Chrome.

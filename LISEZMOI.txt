@@ -1,9 +1,9 @@
-PWA DEVIS NOBEL — INSTALLATION
-1) Copier manifest.json, sw.js, icon-192.png, icon-512.png, icon-512-maskable.png
-   À LA RACINE du dépôt de l'application Devis (à côté de son index.html).
-2) Dans le <head> de l'index.html du Devis, ajouter (si absent) :
-   <link rel="manifest" href="./manifest.json"/>
-   <meta name="theme-color" content="#0B1F3A"/>
-   <meta name="mobile-web-app-capable" content="yes"/>
-   <script>if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");</script>
-3) Déployer. Ouvrir le site en HTTPS → icône "Installer" dans Chrome.
+KIT PWA — CLINIC NOBEL CRM
+Contenu : index.html (corrigé) · manifest.json · sw.js · icon-192.png · icon-512.png · icon-512-maskable.png · apple-touch-icon.png
+Installation :
+1) Copier TOUS ces fichiers à la RACINE du dépôt (GitHub / Netlify), au même niveau.
+   index.html remplace l'existant ; les autres fichiers sont nouveaux.
+2) Déployer, ouvrir le site en HTTPS.
+3) PC Chrome : icône "Installer" dans la barre d'adresse → l'app s'ouvre sans barre Chrome.
+   Android Chrome : menu ⋮ → "Installer l'application" → icône Clinic Nobel sur l'écran d'accueil.
+Vérification : F12 → Application → Manifest → nom + 3 icônes visibles, aucune erreur.

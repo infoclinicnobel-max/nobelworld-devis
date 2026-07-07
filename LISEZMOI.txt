@@ -1,9 +1,48 @@
-KIT PWA — CLINIC NOBEL CRM
-Contenu : index.html (corrigé) · manifest.json · sw.js · icon-192.png · icon-512.png · icon-512-maskable.png · apple-touch-icon.png
-Installation :
-1) Copier TOUS ces fichiers à la RACINE du dépôt (GitHub / Netlify), au même niveau.
-   index.html remplace l'existant ; les autres fichiers sont nouveaux.
-2) Déployer, ouvrir le site en HTTPS.
-3) PC Chrome : icône "Installer" dans la barre d'adresse → l'app s'ouvre sans barre Chrome.
-   Android Chrome : menu ⋮ → "Installer l'application" → icône Clinic Nobel sur l'écran d'accueil.
-Vérification : F12 → Application → Manifest → nom + 3 icônes visibles, aucune erreur.
+CLINIC NOBELWORLD — DEVIS & FACTURES
+Pack final du 7 juillet 2026
+=====================================
+
+CONTENU
+-------
+index.html               Application complète (SEUL fichier de code modifié durant tous les sprints)
+Code.gs                  Backend Google Apps Script — INCHANGÉ, fourni pour référence.
+                         Ne PAS le redéployer : votre déploiement actuel reste valide.
+icon-192.png             Icône PWA 192 px (logo CN officiel)
+icon-512.png             Icône PWA 512 px
+icon-512-maskable.png    Icône Android adaptative (zone de sécurité)
+apple-touch-icon.png     Icône iPhone/iPad
+favicon.ico / favicon.png   Favicon navigateur
+manifest.json            Manifest PWA (pointe vers les icônes ci-dessus)
+
+DÉPLOIEMENT GITHUB / NETLIFY
+----------------------------
+1. Placez TOUS ces fichiers à la RACINE du dépôt GitHub
+   (au même niveau qu'index.html), en remplaçant les anciens.
+2. Si votre dépôt contient un sw.js : ouvrez-le et incrémentez la
+   version du cache (ex. 'cn-v1' -> 'cn-v2'), sinon ignorez ce point.
+3. Poussez : Netlify redéploie automatiquement.
+
+CE QUE CONTIENT CETTE VERSION (rappel des sprints)
+--------------------------------------------------
+- PDF 2 pages garanti (pagination 287 mm, en-tête compact, alerte de débordement)
+- Nom de fichier PDF : « Clinic NobelWorld — Devis/Facture — NOM Prénom »
+- Synchronisation blindée : safeMerge anti-écrasement, snapshot local par
+  utilisateur, bannière hors-ligne, timeout 45 s
+- Correction date d'opération (décalage fuseau Google Sheets neutralisé)
+- Paramètres -> Textes PDF (tous les textes du PDF modifiables + priorité
+  document -> paramètres -> défauts + bouton « Appliquer les paramètres »)
+- Remise promotionnelle (€ ou %, motif, total/acompte/solde recalculés)
+- Recherche globale corrigée (téléphones numériques) + ErrorBoundary
+- Paramètres -> Permissions utilisateurs (26 permissions, préréglages,
+  rôles Lecture seule et Utilisateur limité, PDG inverrouillable)
+- Boutons « + Ajouter une facture » et « + Ajouter un paiement »
+  (facture depuis devis ou manuelle, paiements typés, statuts auto)
+- Anti-fermeture accidentelle des formulaires + confirmation
+  « modifications non enregistrées »
+- Logo CN officiel : sidebar, connexion, favicon, icônes PWA
+
+APRÈS DÉPLOIEMENT (si l'ancien logo/version reste affiché)
+----------------------------------------------------------
+PC      : Ctrl+Shift+R sur la page
+Android : Paramètres du site -> Effacer les données, ou
+          désinstaller/réinstaller l'app de l'écran d'accueil

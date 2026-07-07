@@ -1,31 +1,16 @@
 {
-  "name": "Clinic Nobel — CRM",
-  "short_name": "CRM Nobel",
-  "id": "./",
-  "start_url": "./",
+  "name": "Clinic NobelWorld — Devis & Factures",
+  "short_name": "NobelWorld",
+  "description": "CRM Devis & Factures — Clinic Nobel, Istanbul",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#0F2B46",
   "lang": "fr",
-  "theme_color": "#0B1F3A",
-  "background_color": "#F4F7FB",
   "icons": [
-    {
-      "src": "./icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./icon-512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

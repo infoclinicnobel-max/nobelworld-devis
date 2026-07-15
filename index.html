@@ -625,6 +625,11 @@ const PDF_TEXTS={
   signature:"Signature du patient — précédée de la mention « Lu et approuvé »",
   showImportant:true, showNotes:true, showQR:true, showSignature:true,
   optVolsExclus:true, optHotelInclus:true, optTransfertsInclus:true,
+  /* ---- Modèle PDF FACTURE : textes totalement indépendants du devis ---- */
+  factImportant:"Le règlement de la présente facture vaut acceptation des prestations listées.\nToute réclamation doit être adressée par écrit sous 8 jours à compter de la date de facture.",
+  factNotes:"Facture établie par Clinic NobelWorld pour les prestations médicales et d'accompagnement détaillées ci-dessus. Les acomptes versés et les paiements enregistrés sont déduits du solde restant dû. Sauf accord écrit contraire, le solde est payable avant l'intervention.",
+  factLegal:"Document tenant lieu de facture.",
+  factFooter:"",
 };
 const DEFAULT_SETTINGS={
   company:"Clinic NobelWorld", tagline:"Tourisme médical · Istanbul",
@@ -1589,6 +1594,12 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
   const paiementNote=(recPay&&recPay!==DEFAULT_PAIEMENT_NOTE&&recPay!==(s.paiementNote||''))?recPay:(s.paiementNote||DEFAULT_PAIEMENT_NOTE);
   const recCgv=(record.cgv!=null&&record.cgv!=='')?record.cgv:null;
   const notesTxt=(recCgv&&recCgv!==PDF_TEXTS.cgv&&recCgv!==(s.cgv||''))?recCgv:(s.cgv||'');
+  // FACTURE : modèle indépendant — aucun texte du devis (cgv, conditions, signature) n'est repris.
+  const factImp=String(s.factImportant||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  const factNotes=(record.factNotes!=null&&record.factNotes!=='')?record.factNotes:(s.factNotes||'');
+  const importantShow=isF?factImp:important;
+  const notesShow=isF?factNotes:notesTxt;
+  const payList=isF?factPayments((app&&app.data&&app.data.paiements)||[],record.id):[];
   const forfait=Number(record.forfait||0);
   const sousTotal=forfait>0?forfait:devisTotal(record);
   const oSum=optsSum(record);
@@ -1598,7 +1609,7 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
   const reste=Math.max(0,total-paidN);
   const title=isF?'Facture':(s.docTitle||'DEVIS MÉDICAL PREMIUM');
   const recLegal=(record.legal!=null&&record.legal!=='')?record.legal:null;
-  const footLegal=isF?`${s.company} — Facture ${record.numero}. Document tenant lieu de facture.`
+  const footLegal=isF?`${s.company} — Facture ${record.numero}. ${s.factLegal||'Document tenant lieu de facture.'}`
     :((recLegal&&recLegal!==PDF_TEXTS.legal&&recLegal!==(s.legal||''))?recLegal:(s.legal||''));
   const qr=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent((s.company||'')+' '+(record.numero||''))}`;
 
@@ -1624,7 +1635,7 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
           <div className="ty">{isF?'Facture':'Devis'}</div>
           <div className="no">{record.numero||'—'}</div>
           <div className="dt">Date : {E?<input type="date" className="ed" value={normalizeDate(record.date)} onChange={e=>set('date',e.target.value)}/>:<b>{fmtDate(record.date)}</b>}
-            <br/>{isF?'Échéance':'Validité'} : {E?<input type="date" className="ed" value={normalizeDate(record.validite)} onChange={e=>set('validite',e.target.value)}/>:<b>{fmtDate(record.validite)}</b>}</div>
+            {!isF&&<><br/>Validité : {E?<input type="date" className="ed" value={normalizeDate(record.validite)} onChange={e=>set('validite',e.target.value)}/>:<b>{fmtDate(record.validite)}</b>}</>}</div>
         </div>
       </div>
       <div className="dbody">
@@ -1672,14 +1683,14 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
         </div>}
 
       </div>
-      <div className="pagefoot"><span>{s.company} · {record.numero||''}</span><span>Page 1/2</span></div>
+      <div className="pagefoot"><span>{(isF&&s.factFooter)?s.factFooter:`${s.company} · ${record.numero||''}`}</span><span>Page 1/2</span></div>
     </section>
 
     {/* ===================== PAGE 2 ===================== */}
     <section className="page page-break">
       <div className="loghead"><LogoCN px={44}/><div className="suite">{isF?'Facture':'Devis'} {record.numero||''} — suite</div></div>
       <div className="dbody dbody2">
-        <div className="sec"><div className="seclbl">Conditions de paiement</div>
+        <div className="sec"><div className="seclbl">{isF?'Règlement':'Conditions de paiement'}</div>
           <div className="paybox">
             <div className="l"><span>Prix du forfait</span><span className="v tnum">{money(sousTotal,cur)}{s.vat?' TTC':''}</span></div>
             {oSum>0&&<div className="l"><span>Options</span><span className="v tnum">{money(oSum,cur)}</span></div>}
@@ -1689,10 +1700,13 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
                 :`-${money(remM,cur)}`}</span></div>}
             {remM>0&&<div className="l"><span>Total après remise</span><span className="v tnum">{money(total,cur)}</span></div>}
             {remM<=0&&oSum>0&&<div className="l"><span>Total</span><span className="v tnum">{money(total,cur)}</span></div>}
-            <div className="l acc"><span>{isF?'Déjà réglé':(s.libAcompte||'Acompte à la réservation')}</span><span className="v tnum">{money(paidN,cur)}</span></div>
-            <div className="l big"><span>{s.libSolde||'Reste à payer'}</span><span className="v tnum">{money(reste,cur)}</span></div>
-            <div className="note">{E?<EditableText multiline value={paiementNote} onChange={v=>set('paiementNote',v)}/>:paiementNote}
-              <br/><span style={{fontWeight:700,color:'var(--ink)'}}>IBAN {s.iban} · BIC {s.bic}</span></div>
+            <div className="l acc"><span>{isF?'Acomptes et paiements déjà versés':(s.libAcompte||'Acompte à la réservation')}</span><span className="v tnum">{money(paidN,cur)}</span></div>
+            {isF&&payList.map(p=><div key={p.id} className="l" style={{fontSize:12,padding:'1px 0'}}>
+              <span style={{paddingLeft:14,color:'var(--muted-2)'}}>· {fmtDate(p.date)} — {p.mode||'Paiement'}{p.type==='remboursement'?' (remboursement)':''}{p.reference?` — réf. ${p.reference}`:''}</span>
+              <span className="v tnum" style={{color:'var(--muted-2)'}}>{money(Number(p.montant||0),cur)}</span></div>)}
+            <div className="l big"><span>{isF?'Solde restant dû':(s.libSolde||'Reste à payer')}</span><span className="v tnum">{money(reste,cur)}</span></div>
+            <div className="note">{!isF&&<>{E?<EditableText multiline value={paiementNote} onChange={v=>set('paiementNote',v)}/>:paiementNote}<br/></>}
+              <span style={{fontWeight:700,color:'var(--ink)'}}>IBAN {s.iban} · BIC {s.bic}</span></div>
           </div>
         </div>
         {(inc.length>0||E)&&<div className="sec"><div className="seclbl">Prestations incluses</div>
@@ -1713,19 +1727,19 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
           {E&&<button className="addrow" onClick={on.addExc}>+ Ajouter une prestation non incluse</button>}
         </div>}
 
-        {(s.showImportant!==false||E)&&<div className="sec"><div className="seclbl">Conditions importantes</div>
+        {(isF?importantShow.length>0:(s.showImportant!==false||E))&&<div className="sec"><div className="seclbl">Conditions importantes</div>
           {E? <div>{important.map((x,i)=><div key={i} className="incrow"><span className="bul" style={{color:'var(--gold)'}}>•</span>
                 <EditableText value={x} placeholder="Condition importante" onChange={v=>on.setImp(i,v)} style={{flex:1}}/>
                 <button className="delrow" onClick={()=>on.rmImp(i)}>×</button></div>)}
               <button className="addrow" onClick={on.addImp}>+ Ajouter une condition</button></div>
-            : <ul className="implist">{important.map((x,i)=><li key={i}>{x}</li>)}</ul>}
+            : <ul className="implist">{importantShow.map((x,i)=><li key={i}>{x}</li>)}</ul>}
         </div>}
 
-        {(s.showNotes!==false)&&(notesTxt||E)&&<div className="sec"><div className="seclbl">Notes médicales et administratives</div>
-          <div className="notesbox">{E?<EditableText multiline value={notesTxt} onChange={v=>set('cgv',v)}/>:notesTxt}</div></div>}
+        {(isF? !!notesShow : ((s.showNotes!==false)&&(notesTxt||E)))&&<div className="sec"><div className="seclbl">{isF?'Mentions administratives':'Notes médicales et administratives'}</div>
+          <div className="notesbox">{E?<EditableText multiline value={notesTxt} onChange={v=>set('cgv',v)}/>:notesShow}</div></div>}
       </div>
       <div>
-        {s.showSignature!==false&&<div className="signrow">
+        {!isF&&s.showSignature!==false&&<div className="signrow">
           <span>Fait le {fmtDate(record.date)}</span>
           <span className="signlab">{s.signature||'Signature du patient — précédée de la mention « Lu et approuvé »'}<span className="signline"/></span>
         </div>}
@@ -1733,7 +1747,7 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
           <span>{footLegal||((s.company||'Clinic NobelWorld')+' — Document non contractuel à valeur d’estimation.')}</span>
           {s.showQR!==false&&<img className="qr" src={qr} alt="QR" onError={e=>e.target.style.display='none'}/>}
         </div>
-        <div className="pagefoot"><span>{s.company} · {record.numero||''}</span><span>Page 2/2</span></div>
+        <div className="pagefoot"><span>{(isF&&s.factFooter)?s.factFooter:`${s.company} · ${record.numero||''}`}</span><span>Page 2/2</span></div>
       </div>
     </section>
 
@@ -2152,7 +2166,7 @@ function FactureCreateModal({onClose,onCreated}){
       if(f.forfait!=='') rec.forfait=Number(f.forfait);
       rec.acompte=Number(f.acompte||0);
       if(f.noteInterne) rec.noteInterne=f.noteInterne;
-      if(f.noteClient) rec.cgv=f.noteClient;   // note visible = bloc Notes du PDF, propre à ce document
+      if(f.noteClient) rec.factNotes=f.noteClient;   // note visible = bloc « Mentions administratives » du PDF facture
       const saved=await save('factures',rec,`a créé la facture ${numero}${dv?(' depuis le devis '+dv.numero):''}`);
       if(paye>0){
         await save('paiements',{refId:saved.id,refNum:numero,patientId:rec.patientId,devisId:rec.devisId||'',
@@ -2199,7 +2213,7 @@ function FactureCreateModal({onClose,onCreated}){
     <div style={{background:'var(--surface)',border:'1px solid var(--line)',borderRadius:10,padding:'8px 12px',fontSize:13,margin:'2px 0 12px'}}>
       Total : <b className="tnum">{money(total,cur)}</b> · Déjà payé : <b className="tnum">{money(paye,cur)}</b> · Solde restant : <b className="tnum">{money(Math.max(0,total-paye),cur)}</b></div>
     <Field label="Note interne" hint="jamais visible sur le PDF"><Input value={f.noteInterne} onChange={e=>set('noteInterne',e.target.value)} placeholder="Optionnel"/></Field>
-    <Field label="Note visible sur la facture" hint="remplace le bloc Notes du PDF pour ce document">
+    <Field label="Note visible sur la facture" hint="remplace le bloc « Mentions administratives » du PDF pour ce document">
       <Textarea style={{minHeight:60}} value={f.noteClient} onChange={e=>set('noteClient',e.target.value)} placeholder="Optionnel"/></Field>
   </Modal>;
 }
@@ -2522,6 +2536,7 @@ function ParametresView(){
     const r=new FileReader(); r.onload=()=>set('logo',r.result); r.readAsDataURL(file); };
   const Chk=({k,label})=><label style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:13,margin:'6px 0 12px',cursor:'pointer',lineHeight:1.45}}>
     <input type="checkbox" style={{marginTop:2}} checked={s[k]!==false} onChange={e=>set(k,e.target.checked)}/>{label}</label>;
+  const [pdfSub,setPdfSub]=useState('devis');
   // Accès à l'onglet Connexion : administrateur (all) ou permission explicite
   const canConn=can(user,'all')||can(user,'connexionView');
   // Gestion des permissions : administrateur ou droit usersManage ; modification des autres onglets : paramEdit
@@ -2530,7 +2545,7 @@ function ParametresView(){
 
   return <div style={{maxWidth:760}}>
     <div className="seg" style={{marginBottom:18}}>
-      {[['societe','Société'],['banque','Paiement & légal'],['pdf','Textes PDF'],['connexion','Connexion'],['permissions','Permissions utilisateurs']]
+      {[['societe','Société'],['banque','Paiement & légal'],['pdf','Modèles PDF'],['connexion','Connexion'],['permissions','Permissions utilisateurs']]
         .filter(([k])=>(k!=='connexion'||canConn)&&(k!=='permissions'||canPerm)).map(([k,l])=>(
         <button key={k} className={tab===k?'on':''} onClick={()=>setTab(k)}>{l}</button>))}</div>
 
@@ -2572,10 +2587,15 @@ function ParametresView(){
     </div>}
 
     {tab==='pdf'&&<div className="card card-pad">
+      <div className="seg" style={{marginBottom:14}}>
+        {[['devis','Modèle PDF Devis'],['facture','Modèle PDF Facture']].map(([k,l])=>(
+          <button key={k} className={'seg-btn'+(pdfSub===k?' active':'')} onClick={()=>setPdfSub(k)}>{l}</button>))}
+      </div>
+
+      {pdfSub==='devis'&&<>
       <p className="muted" style={{fontSize:12.5,lineHeight:1.6,margin:'0 0 14px'}}>
-        Ces textes sont utilisés dans le <b>PDF des devis et factures</b>. Ils servent de modèles pour les <b>nouveaux documents</b> :
-        chaque devis photographie ces textes à sa création, donc modifier les paramètres ne change jamais les anciens devis.
-        Sur un document précis, tout reste modifiable via son éditeur (cliquer sur les textes, ou « Options PDF du document »).</p>
+        Textes du <b>PDF des devis</b>. Un devis dont un texte a été personnalisé garde sa version ;
+        sinon il suit ces paramètres. Sur un devis précis, tout reste modifiable via son éditeur.</p>
 
       <div className="row2">
         <Field label="Validité du devis (jours)"><Input type="number" value={s.validiteJours??30} onChange={e=>set('validiteJours',Number(e.target.value))}/></Field>
@@ -2612,8 +2632,26 @@ function ParametresView(){
       <Chk k="showSignature" label="Afficher la zone de signature sur le PDF"/>
       <Chk k="showQR" label="Afficher le QR code sur le PDF"/>
 
+      </>}
+
+      {pdfSub==='facture'&&<>
+      <p className="muted" style={{fontSize:12.5,lineHeight:1.6,margin:'0 0 14px'}}>
+        Textes du <b>PDF des factures</b> — document comptable, totalement indépendant du devis :
+        aucune mention de validité, de promotion ou de signature n'y figure. Numéro, date, patient, chirurgien,
+        clinique, prestations, total, acomptes versés, paiements enregistrés, solde, IBAN/BIC et coordonnées
+        sont repris automatiquement des données de la facture.</p>
+      <Field label="Conditions importantes (facture)" hint="1 condition par ligne — laisser vide pour masquer le bloc">
+        <Textarea style={{minHeight:90}} value={s.factImportant||''} onChange={e=>set('factImportant',e.target.value)}/></Field>
+      <Field label="Notes administratives (facture)" hint="bloc encadré de la page 2 — laisser vide pour masquer">
+        <Textarea style={{minHeight:130}} value={s.factNotes||''} onChange={e=>set('factNotes',e.target.value)}/></Field>
+      <Field label="Mentions légales (facture)" hint="pied du document, précédé automatiquement de « Société — Facture N° »">
+        <Textarea style={{minHeight:56}} value={s.factLegal||''} onChange={e=>set('factLegal',e.target.value)}/></Field>
+      <Field label="Texte de bas de page (facture)" hint="ligne tout en bas de chaque page — vide = « Société · N° »">
+        <Input value={s.factFooter||''} onChange={e=>set('factFooter',e.target.value)}/></Field>
+      </>}
+
       <div style={{display:'flex',gap:10,marginTop:16,flexWrap:'wrap'}}>
-        <button className="btn" onClick={()=>{ if(window.confirm('Réinitialiser tous les textes et options PDF aux valeurs par défaut ?\n(Pensez ensuite à cliquer sur « Enregistrer les paramètres ».)')) { setS(x=>({...x,...PDF_TEXTS})); toast('Textes réinitialisés — cliquez sur Enregistrer pour appliquer'); } }}>
+        <button className="btn" onClick={()=>{ if(window.confirm('Réinitialiser tous les textes des modèles Devis ET Facture aux valeurs par défaut ?\n(Pensez ensuite à cliquer sur « Enregistrer les paramètres ».)')) { setS(x=>({...x,...PDF_TEXTS})); toast('Textes réinitialisés — cliquez sur Enregistrer pour appliquer'); } }}>
           Réinitialiser les textes par défaut</button>
       </div>
       <p className="muted" style={{fontSize:12,marginTop:10}}>N'oubliez pas de cliquer sur <b>« Enregistrer les paramètres »</b> en bas de page pour appliquer vos modifications.</p>

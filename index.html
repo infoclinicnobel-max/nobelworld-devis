@@ -635,7 +635,7 @@ const DEFAULT_SETTINGS={
   company:"Clinic NobelWorld", tagline:"Tourisme médical · Istanbul",
   address:"Avrasya Hastanesi — Istanbul, Türkiye", phone:"+90 ___ ___ __ __",
   whatsapp:"+90 ___ ___ __ __", email:"contact@clinicnobel.world", website:"www.clinicnobel.world",
-  iban:"TR00 0000 0000 0000 0000 0000 00", bic:"XXXXXXXX", vat:"",
+  bankName:"", bankAddress:"", iban:"", bic:"", vat:"",
   logo:"", currency:"€",
   docTitle:"DEVIS MÉDICAL PREMIUM",
   cgv:"Le présent devis est valable 30 jours. Un acompte confirme la réservation de la date opératoire. Le solde est réglé avant l'intervention. Les tarifs incluent uniquement les prestations listées.",
@@ -1567,7 +1567,15 @@ function LogoCN({px=180}){
   </svg>;
 }
 function DevisDoc({record,settings,patient,type,paid,editable,on}){
-  const s=settings; const cur=s.currency||'€'; const isF=type==='facture'; const E=!!editable;
+  const s=settings; const cur=(record&&record.devise)||s.currency||'€'; const isF=type==='facture'; const E=!!editable;
+  // Coordonnées bancaires photographiées dans le document à sa création ;
+  // un ancien document sans photographie affiche celles des paramètres (comportement historique).
+  const bq={
+    nom:(record.bqNom!=null?record.bqNom:(s.bankName||'')),
+    adresse:(record.bqAdresse!=null?record.bqAdresse:(s.bankAddress||'')),
+    iban:((record.bqIban!=null&&record.bqIban!=='')?record.bqIban:(s.iban||'')),
+    bic:((record.bqBic!=null&&record.bqBic!=='')?record.bqBic:(s.bic||'')),
+  };
   const set=(k,v)=>on&&on.set(k,v);
   const logo=s.logo||DEFAULT_LOGO;
   const app=useApp();
@@ -1706,7 +1714,8 @@ function DevisDoc({record,settings,patient,type,paid,editable,on}){
               <span className="v tnum" style={{color:'var(--muted-2)'}}>{money(Number(p.montant||0),cur)}</span></div>)}
             <div className="l big"><span>{isF?'Solde restant dû':(s.libSolde||'Reste à payer')}</span><span className="v tnum">{money(reste,cur)}</span></div>
             <div className="note">{!isF&&<>{E?<EditableText multiline value={paiementNote} onChange={v=>set('paiementNote',v)}/>:paiementNote}<br/></>}
-              <span style={{fontWeight:700,color:'var(--ink)'}}>IBAN {s.iban} · BIC {s.bic}</span></div>
+              {(bq.nom||bq.adresse)&&<span style={{color:'var(--muted)'}}>{bq.nom}{bq.nom&&bq.adresse?' — ':''}{bq.adresse}<br/></span>}
+              {(bq.iban||bq.bic)&&<span style={{fontWeight:700,color:'var(--ink)'}}>{bq.iban?('IBAN '+bq.iban):''}{bq.iban&&bq.bic?' · ':''}{bq.bic?('BIC '+bq.bic):''}</span>}</div>
           </div>
         </div>
         {(inc.length>0||E)&&<div className="sec"><div className="seclbl">Prestations incluses</div>
@@ -1848,6 +1857,12 @@ function DevisView(){
     const numero=await nextNumber('facture');
     const fac={...d,id:undefined,numeroDevis:d.numero,numero,statut:'brouillon',devisId:d.id,createdBy:user.id};
     delete fac.createdAt; delete fac.updatedAt;
+    // Nouvelle facture = coordonnées bancaires et devise ACTUELLES des paramètres
+    // (le devis, lui, conserve celles figées à sa propre création).
+    const PB=data.parametres||{};
+    fac.bqNom=PB.bankName||''; fac.bqAdresse=PB.bankAddress||'';
+    fac.bqIban=PB.iban||''; fac.bqBic=PB.bic||'';
+    fac.devise=PB.currency||fac.devise||'€';
     await save('factures',fac,`a transformé ${d.numero} en facture ${numero}`);
     await save('devis',{...d,statut:'accepte'});
     toast('Facture créée : '+numero); go('factures');
@@ -1905,6 +1920,8 @@ function DevisEditor({devis,onClose,onPreview,list}){
       legal:(P.legal!=null?P.legal:''),           // photographie des mentions finales
       promoJours:(P.promoActive?Number(P.validitePromoJours||8):0),
       remiseValeur:'',remiseType:'montant',remiseMotif:'',
+      devise:P.currency||'€',
+      bqNom:(P.bankName||''), bqAdresse:(P.bankAddress||''), bqIban:(P.iban||''), bqBic:(P.bic||''),
       forfait:0,acompte:0,statut:'brouillon',...d,
     };
     if(d.id){ // compat anciens devis (lignes) → actes
@@ -2014,6 +2031,7 @@ function DevisEditor({devis,onClose,onPreview,list}){
   // Droits fins dans l'éditeur
   const canMoney=can(user,'all')||can(user,'montantsEdit');
   const canRemise=can(user,'all')||can(user,'remiseEdit');
+  const canBank=can(user,'all')||can(user,'paramEdit');
   const finish=async(statut,preview)=>{
     if(saving) return;                    // anti double-clic
     setSaving(true);
@@ -2097,6 +2115,19 @@ function DevisEditor({devis,onClose,onPreview,list}){
             <Field label="Notes médicales et administratives"><Textarea style={{minHeight:120}} value={f.cgv!=null?f.cgv:''} onChange={e=>on.set('cgv',e.target.value)}/></Field>
             <Field label="Modalités de paiement"><Textarea style={{minHeight:70}} value={f.paiementNote||''} onChange={e=>on.set('paiementNote',e.target.value)}/></Field>
             <Field label="Mentions finales"><Textarea style={{minHeight:56}} value={f.legal!=null?f.legal:''} onChange={e=>on.set('legal',e.target.value)}/></Field>
+            {canBank&&<>
+            <Field label="Banque — nom (ce document)"><Input value={f.bqNom!=null?f.bqNom:''} onChange={e=>on.set('bqNom',e.target.value)}/></Field>
+            <Field label="Banque — adresse (ce document)"><Input value={f.bqAdresse!=null?f.bqAdresse:''} onChange={e=>on.set('bqAdresse',e.target.value)}/></Field>
+            <div className="row2">
+              <Field label="IBAN (ce document)"><Input value={f.bqIban!=null?f.bqIban:''} onChange={e=>on.set('bqIban',e.target.value)}/></Field>
+              <Field label="BIC (ce document)"><Input value={f.bqBic!=null?f.bqBic:''} onChange={e=>on.set('bqBic',e.target.value)}/></Field></div>
+            <button className="btn btn-sm" style={{marginBottom:10}} onClick={()=>{
+              if(!window.confirm("Souhaitez-vous remplacer les coordonnées bancaires de ce document par les coordonnées actuellement enregistrées dans les paramètres ?\n\nOK = Actualiser · Annuler = Conserver")) return;
+              const PB=data.parametres||{};
+              setF(x=>({...x,bqNom:PB.bankName||'',bqAdresse:PB.bankAddress||'',bqIban:PB.iban||'',bqBic:PB.bic||''}));
+              toast('Coordonnées bancaires actualisées pour ce document');
+            }}><Ico.check size={14}/>Actualiser avec les coordonnées bancaires actuelles</button>
+            </>}
             <p className="muted" style={{fontSize:11.5,lineHeight:1.5,margin:'4px 0 0'}}>Conditions importantes, prestations incluses / non incluses et options se modifient directement <b>sur le document</b> (cliquez sur le texte).</p>
           </details>
         </div>
@@ -2162,6 +2193,9 @@ function FactureCreateModal({onClose,onCreated}){
       }else{
         rec={numero,patientId:f.patientId,actes:[],inc:[],exc:[],options:[],createdBy:user.id};
       }
+      if(rec.bqIban==null&&rec.bqBic==null){ const PB=data.parametres||{};
+        rec.bqNom=PB.bankName||''; rec.bqAdresse=PB.bankAddress||''; rec.bqIban=PB.iban||''; rec.bqBic=PB.bic||''; }
+      if(rec.devise==null) rec.devise=(data.parametres&&data.parametres.currency)||'€';
       rec.date=f.date; rec.statut=f.statut; rec.typeFacture=f.typeFacture;
       if(f.forfait!=='') rec.forfait=Number(f.forfait);
       rec.acompte=Number(f.acompte||0);
@@ -2265,6 +2299,8 @@ function FactureDetail({facture,onClose}){
   const [del,setDel]=useState(null);
   const [viewDoc,setViewDoc]=useState(false);
   const canEdit=can(user,'paymentEdit')||can(user,'all')||can(user,'factureCreate');
+  // Coordonnées bancaires : réservées à l'administrateur (ou permission « Modifier les paramètres »)
+  const canBank=can(user,'all')||can(user,'paramEdit');
   const setStatut=(st,msg)=>save('factures',{...f,statut:st},msg);
 
   return <Drawer wide title={'Facture '+f.numero} onClose={onClose}
@@ -2287,6 +2323,14 @@ function FactureDetail({facture,onClose}){
         : <button className="btn btn-sm" onClick={()=>setStatut('brouillon',`a réactivé la facture ${f.numero}`)}><Ico.check size={14}/>Réactiver</button>}
     </div>}
 
+    {canBank&&<div style={{margin:'0 0 14px'}}>
+      <button className="btn btn-sm" onClick={async()=>{
+        if(!window.confirm("Souhaitez-vous remplacer les coordonnées bancaires de ce document par les coordonnées actuellement enregistrées dans les paramètres ?\n\nOK = Actualiser · Annuler = Conserver")) return;
+        const PB=data.parametres||{};
+        await save('factures',{...f,bqNom:PB.bankName||'',bqAdresse:PB.bankAddress||'',bqIban:PB.iban||'',bqBic:PB.bic||''},
+          `a actualisé les coordonnées bancaires de la facture ${f.numero}`);
+        toast('Coordonnées bancaires de la facture actualisées');
+      }}><Ico.check size={14}/>Actualiser avec les coordonnées bancaires actuelles</button></div>}
     <div className="sec-head"><div><h2 style={{fontSize:16,margin:0}}>Historique des paiements</h2>
       <div className="desc">{pays.length} mouvement(s)</div></div><div className="sp"/>
       {canEdit&&<><button className="btn btn-sm" onClick={()=>setEdit({type:'acompte'})}><Ico.plus size={14}/>Ajouter un acompte</button>
@@ -2579,11 +2623,13 @@ function ParametresView(){
     </div>}
 
     {tab==='banque'&&<div className="card card-pad">
+      <div className="row2"><Field label="Nom de la banque"><Input value={s.bankName||''} onChange={e=>set('bankName',e.target.value)} placeholder="Ex. QNB Finansbank"/></Field>
+        <Field label="Adresse de la banque"><Input value={s.bankAddress||''} onChange={e=>set('bankAddress',e.target.value)} placeholder="Ville, pays (optionnel)"/></Field></div>
       <div className="row2"><Field label="IBAN"><Input value={s.iban} onChange={e=>set('iban',e.target.value)}/></Field>
         <Field label="BIC"><Input value={s.bic} onChange={e=>set('bic',e.target.value)}/></Field></div>
       <div className="row2"><Field label="N° TVA" hint="(optionnel)"><Input value={s.vat} onChange={e=>set('vat',e.target.value)}/></Field>
         <Field label="Devise"><Select value={s.currency} onChange={e=>set('currency',e.target.value)}>{['€','$','£','₺'].map(c=><option key={c}>{c}</option>)}</Select></Field></div>
-      <p className="muted" style={{fontSize:12.5,lineHeight:1.6,margin:'4px 0 0'}}>Les textes des documents (conditions, notes médicales, mentions…) se modifient dans l'onglet <b>Textes PDF</b>.</p>
+      <p className="muted" style={{fontSize:12.5,lineHeight:1.6,margin:'4px 0 0'}}>Les textes des documents (conditions, notes médicales, mentions…) se modifient dans l'onglet <b>Modèles PDF</b>.</p>
     </div>}
 
     {tab==='pdf'&&<div className="card card-pad">

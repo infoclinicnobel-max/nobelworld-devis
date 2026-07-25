@@ -512,6 +512,21 @@ const store={
   set(k,v){ try{localStorage.setItem(CONFIG.CACHE_PREFIX+k,JSON.stringify(v));}catch(e){mem[k]=v;} },
   del(k){ try{localStorage.removeItem(CONFIG.CACHE_PREFIX+k);}catch(e){delete mem[k];} },
 };
+/* Session persistante — jamais de mot de passe stocké : uniquement le jeton signé
+   (vérifié côté serveur à chaque ouverture), l'utilisateur et son expiration.
+   « Rester connecté » coché → localStorage (survit à la fermeture du navigateur
+   et au redémarrage de l'appareil) ; décoché → sessionStorage (onglet en cours). */
+const SESSION_KEY=CONFIG.CACHE_PREFIX+'session';
+const sessStore={
+  get(){ try{ const a=localStorage.getItem(SESSION_KEY); if(a) return JSON.parse(a); }catch(e){}
+         try{ const b=sessionStorage.getItem(SESSION_KEY); if(b) return JSON.parse(b); }catch(e){}
+         return mem['session']??null; },
+  set(v){ try{ const j=JSON.stringify(v);
+      if(v&&v.remember===false){ sessionStorage.setItem(SESSION_KEY,j); try{localStorage.removeItem(SESSION_KEY);}catch(e){} }
+      else { localStorage.setItem(SESSION_KEY,j); try{sessionStorage.removeItem(SESSION_KEY);}catch(e){} }
+    }catch(e){ mem['session']=v; } },
+  del(){ try{localStorage.removeItem(SESSION_KEY);}catch(e){} try{sessionStorage.removeItem(SESSION_KEY);}catch(e){} delete mem['session']; },
+};
 
 /* =========================================================================
    PERMISSIONS (RBAC)
@@ -744,8 +759,8 @@ function safeMerge(local,server,graceMs){
 const _arr=x=>Array.isArray(x)?x:[];
 const API={
   remote(){ return !!CONFIG.APPS_SCRIPT_URL; },
-  async login(email,password){
-    if(API.remote()) return remoteCall('login',{email,password});
+  async login(email,password,remember){
+    if(API.remote()) return remoteCall('login',{email,password,remember});
     await localBootstrap();
     const users=store.get('utilisateurs')||[];
     const u=users.find(x=>String(x.email).toLowerCase()===String(email).toLowerCase().trim());
@@ -1084,11 +1099,11 @@ function EditableText({value,onChange,placeholder,multiline,className,style,minC
    AUTH + PROVIDER + LAYOUT
    ------------------------------------------------------------------------- */
 function App(){
-  const [session,setSession]=useState(()=>store.get('session'));
+  const [session,setSession]=useState(()=>sessStore.get());
   // Copie locale de secours : à la réouverture, on affiche immédiatement les dernières
   // données connues de CET utilisateur (clé par id — jamais celles d'un autre compte),
   // puis la synchronisation fusionne en arrière-plan.
-  const [data,setData]=useState(()=>{ const s=store.get('session'); return s&&s.user? (store.get('snap_'+s.user.id)||null):null; });
+  const [data,setData]=useState(()=>{ const s=sessStore.get(); return s&&s.user? (store.get('snap_'+s.user.id)||null):null; });
   const [loading,setLoading]=useState(false);
   const [setup,setSetup]=useState(null); // null=inconnu, true=aucun admin, false=ok
   const [syncState,setSyncState]=useState('idle'); // idle|syncing|ok|error|offline
@@ -1123,13 +1138,13 @@ function App(){
       // Resync des permissions de l'utilisateur courant (sans reconnexion) + invalidation de la session locale périmée
       const me=(r.utilisateurs||[]).find(u=>u.id===session.user.id);
       if(me){
-        if(me.statut==='desactive'){ store.del('snap_'+session.user.id); store.del('session'); setSession(null); setData(null); return true; }
+        if(me.statut==='desactive'){ store.del('snap_'+session.user.id); sessStore.del(); setSession(null); setData(null); return true; }
         const before=JSON.stringify({r:session.user.role,p:session.user.perms||{},s:session.user.statut});
         const after=JSON.stringify({r:me.role,p:me.perms||{},s:me.statut});
         if(before!==after){
           const nu={...session.user,role:me.role,perms:me.perms||{},statut:me.statut,
             fonction:me.fonction,prenom:me.prenom,nom:me.nom,telephone:me.telephone,photo:me.photo};
-          const ns={...session,user:nu}; store.set('session',ns); setSession(ns);
+          const ns={...session,user:nu}; sessStore.set(ns); setSession(ns);
           console.info('[CN][perms] Permissions rafraîchies pour',nu.email,'role=',nu.role,'perms=',nu.perms);
         }
       }
@@ -1137,7 +1152,7 @@ function App(){
       return true;
     }catch(e){ console.error(e);
       // Jeton refusé par le serveur (secret modifié, session expirée…) → on nettoie et on renvoie à la connexion
-      if(/session/i.test(e&&e.message||'')){ if(session&&session.user) store.del('snap_'+session.user.id); store.del('session'); setSession(null); setData(null); return false; }
+      if(/session/i.test(e&&e.message||'')){ if(session&&session.user) store.del('snap_'+session.user.id); sessStore.del(); setSession(null); setData(null); return false; }
       setSyncState((typeof navigator!=='undefined'&&navigator.onLine===false)?'offline':'error');
       return false;
     }
@@ -1156,12 +1171,15 @@ function App(){
     return ()=>{ window.removeEventListener('online',goOn); window.removeEventListener('offline',goOff); };
   },[session,refresh]);
 
-  const doLogin=async(email,password)=>{
-    const r=await API.login(email,password);
-    const s={token:r.token,user:r.user}; store.set('session',s); setSession(s);
+  const doLogin=async(email,password,remember=true)=>{
+    const r=await API.login(email,password,remember);
+    const s={token:r.token,user:r.user,remember:remember!==false}; sessStore.set(s); setSession(s);
   };
-  const onAdminCreated=(s)=>{ store.set('session',s); setSession(s); setSetup(false); };
-  const logout=()=>{ if(session&&session.user) store.del('snap_'+session.user.id); store.del('session'); setSession(null); setData(null); };
+  const onAdminCreated=(s)=>{ const ns={...s,remember:true}; sessStore.set(ns); setSession(ns); setSetup(false); };
+  const logout=()=>{ if(session&&session.user) store.del('snap_'+session.user.id); sessStore.del(); setSession(null); setData(null); };
+  // Plusieurs onglets : connexion et déconnexion propagées instantanément
+  useEffect(()=>{ const h=(e)=>{ if(e.key===SESSION_KEY){ const sv=sessStore.get(); setSession(sv); if(!sv) setData(null); } };
+    window.addEventListener('storage',h); return()=>window.removeEventListener('storage',h); },[]);
 
   if(!session){
     if(setup===null) return <ToastHost><div className="center-load"><span className="spin"></span></div></ToastHost>;
@@ -1210,9 +1228,10 @@ function FirstRun({onCreated}){
 
 function Login({onLogin}){
   const [email,setEmail]=useState(''); const [pwd,setPwd]=useState('');
+  const [remember,setRemember]=useState(true);
   const [err,setErr]=useState(''); const [busy,setBusy]=useState(false);
   const submit=async()=>{ setErr(''); setBusy(true);
-    try{ await onLogin(email,pwd); }catch(e){ setErr(e.message||'Connexion impossible'); } finally{ setBusy(false);} };
+    try{ await onLogin(email,pwd,remember); }catch(e){ setErr(e.message||'Connexion impossible'); } finally{ setBusy(false);} };
   return <div className="login">
     <div className="left">
       <div className="lmark"><div className="mk"><img src={SIDEBAR_LOGO} alt="Clinic Nobel"/></div>
@@ -1228,6 +1247,8 @@ function Login({onLogin}){
         onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></Field>
       <Field label="Mot de passe"><Input type="password" value={pwd} placeholder="••••••••"
         onChange={e=>setPwd(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></Field>
+      <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,margin:'2px 0 14px',cursor:'pointer',color:'var(--muted)'}}>
+        <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> Rester connecté</label>
       {err&&<div style={{color:'var(--bad)',fontSize:13,marginBottom:12,fontWeight:500}}>{err}</div>}
       <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'11px'}} disabled={busy} onClick={submit}>
         {busy?<span className="spin"/>:<>Se connecter <Ico.arrow size={16}/></>}</button>
@@ -2764,6 +2785,16 @@ function ParametresView(){
           </div>
           {!urlValide&&<p style={{fontSize:12.5,marginTop:10,color:'#a3232b',fontWeight:600}}>
             ⚠ L'URL configurée ne ressemble pas à une URL de déploiement Apps Script valide (elle doit commencer par https://script.google.com/macros/…). La synchronisation risque d'échouer.</p>}
+          <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--line)'}}>
+            <Field label="Durée de session (« Rester connecté »)" hint="appliquée aux prochaines connexions de chaque utilisateur">
+              <Select value={String(s.sessionJours||'30')} onChange={e=>set('sessionJours',e.target.value)} style={{maxWidth:340}}>
+                <option value="7">7 jours</option><option value="30">30 jours (défaut)</option>
+                <option value="60">60 jours</option><option value="90">90 jours</option>
+                <option value="permanent">Permanente — jusqu'à déconnexion manuelle</option></Select></Field>
+            <button className="btn btn-primary" onClick={async()=>{ await saveSettings(s); toast('Durée de session enregistrée ✓'); }}>
+              <Ico.check size={16}/>Enregistrer la durée de session</button>
+            <p className="muted" style={{fontSize:12,marginTop:8,lineHeight:1.6}}>Les sessions déjà ouvertes conservent leur durée d'origine. Un changement de mot de passe déconnecte automatiquement tous les appareils de l'utilisateur concerné (≤ 15 s), et un compte désactivé est bloqué immédiatement.</p>
+          </div>
           <p className="muted" style={{fontSize:12.5,marginTop:14}}>Synchronisation automatique toutes les {pollS} s.</p>
         </>; })()}
     </div>}

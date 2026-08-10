@@ -77,3 +77,10 @@ attend un instantané JSON de la forme `{ "devis": [...], "factures": [...], "pa
 l'ancienne version continue d'être servie par GitHub Pages pendant la durée des travaux.
 Les mêmes fichiers PWA sont recopiés dans `public/` pour la version Next.js, avec des
 chemins absolus. Le cache du service worker est passé en `v3`.
+
+## Déploiement
+
+Le projet Vercel `nobelworld-devis` (équipe Nobel Dent) est relié à ce dépôt. La branche
+`claude/adoring-keller-qi3eez` est déployée en **préproduction** pour la recette du PDF ;
+`main` n'est pas fusionnée tant que cette recette n'est pas validée, afin que GitHub Pages
+continue de servir l'ancienne application.

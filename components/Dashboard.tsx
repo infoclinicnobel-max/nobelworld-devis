@@ -5,7 +5,7 @@ import { Empty, Kpi, StatusBadge } from './ui';
 import { Ico } from './icons';
 import { useApp } from './AppContext';
 import { initials, money, normalizeDate } from '@/lib/format';
-import { can, userLabel } from '@/lib/perms';
+import { can, estDeMoi } from '@/lib/perms';
 import { patientName, totalOf } from '@/lib/calc';
 
 /* =========================================================================
@@ -14,11 +14,10 @@ import { patientName, totalOf } from '@/lib/calc';
 export function Dashboard() {
   const { data, user, go } = useApp();
   const cur = data.parametres.currency || '€';
-  const moi = [user.id, userLabel(user), user.email].map((x) => String(x).toLowerCase());
   const myDevis =
     can(user, 'all') || can(user, 'devisViewAll')
       ? data.devis
-      : data.devis.filter((d) => moi.includes(String(d.createdBy || '').toLowerCase()));
+      : data.devis.filter((d) => estDeMoi(user, d.createdBy));
   const totalDevis = myDevis.reduce((s, d) => s + totalOf(d), 0);
   const encaisse = data.paiements.reduce((s, p) => s + Number(p.montant || 0), 0);
   const factTotal = data.factures.reduce((s, f) => s + totalOf(f), 0);

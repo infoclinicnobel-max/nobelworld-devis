@@ -281,7 +281,7 @@ export function rowToUser(r: Row): AppUser {
     roleBase,
     statut: str(r.statut),
     photo: str(r.photo),
-    perms: parseProfilePerms(r.perms, role),
+    perms: parseProfilePerms(r.perms, role, r.scopes),
     color: str(r.color),
     cree: str(r.cree),
   };

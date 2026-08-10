@@ -8,7 +8,7 @@ import { Ico } from './icons';
 import { DocumentView } from './DocumentView';
 import { useApp } from './AppContext';
 import { fmtDate, money, todayISO } from '@/lib/format';
-import { can, userLabel } from '@/lib/perms';
+import { can, estDeMoi, userLabel } from '@/lib/perms';
 import {
   factPayments, factureStatus, PAY_MODES, patientName, remiseMontant, sumPays, totalOf,
 } from '@/lib/calc';
@@ -240,10 +240,7 @@ export function FacturesView() {
   const seeAllFact =
     can(user, 'all') || can(user, 'factureCreate') || can(user, 'devisViewAll') ||
     can(user, 'paymentView') || can(user, 'paymentEdit');
-  const moi = [user.id, userLabel(user), user.email].map((x) => String(x).toLowerCase());
-  const visible = seeAllFact
-    ? data.factures
-    : data.factures.filter((f) => moi.includes(String(f.createdBy || '').toLowerCase()));
+  const visible = seeAllFact ? data.factures : data.factures.filter((f) => estDeMoi(user, f.createdBy));
   const list = [...visible].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   return (

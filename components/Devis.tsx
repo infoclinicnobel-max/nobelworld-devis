@@ -13,7 +13,7 @@ import { addDays, arrMove, fmtDate, money, normalizeDate, todayISO, uid } from '
 import {
   composeIncExc, DEFAULT_IMPORTANT, DEFAULT_PAIEMENT_NOTE, PDF_TEXTS, settingsImpLines, UNSAVED_MSG,
 } from '@/lib/defaults';
-import { can, userLabel } from '@/lib/perms';
+import { can, estDeMoi, userLabel } from '@/lib/perms';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
 import type { DocRecord } from '@/lib/types';
 
@@ -27,10 +27,7 @@ export function DevisView() {
   const [del, setDel] = useState<DocRecord | null>(null);
   const [filter, setFilter] = useState('tous');
   const seeAllDevis = can(user, 'all') || can(user, 'devisViewAll');
-  const moi = [user.id, userLabel(user), user.email].map((x) => String(x).toLowerCase());
-  let list = seeAllDevis
-    ? data.devis
-    : data.devis.filter((d) => moi.includes(String(d.createdBy || '').toLowerCase()));
+  let list = seeAllDevis ? data.devis : data.devis.filter((d) => estDeMoi(user, d.createdBy));
   if (filter !== 'tous') list = list.filter((d) => d.statut === filter);
   list = [...list].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const cur = data.parametres.currency || '€';
@@ -108,7 +105,7 @@ export function DevisView() {
             <tbody>
               {list.map((d) => {
                 const p = data.patients.find((x) => x.id === d.patientId);
-                const mine = moi.includes(String(d.createdBy || '').toLowerCase());
+                const mine = estDeMoi(user, d.createdBy);
                 const canEdit =
                   can(user, 'devisEditAll') || can(user, 'all') || (can(user, 'devisEditOwn') && mine);
                 return (

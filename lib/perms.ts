@@ -91,6 +91,26 @@ export function userLabel(u: Partial<AppUser> | null | undefined): string {
   return n || u.email || '—';
 }
 
+/* `nw_devis.cree_par`, `nw_factures.cree_par` et `patients.creePar` portent un nom
+   lisible saisi au fil du temps (« Veys Turan », « Andréa Nobel », « andrea », « ib »)
+   et non un identifiant stable. Une comparaison stricte ferait disparaître tous les
+   documents d'une commerciale — qui, par défaut, ne voit que les siens. On accepte
+   donc l'identifiant, le libellé complet, l'e-mail et le prénom seul. */
+export function estDeMoi(user: Partial<AppUser> | null | undefined, valeur: unknown): boolean {
+  if (!user) return false;
+  const cle = String(valeur ?? '').trim().toLowerCase();
+  if (!cle) return false;
+  const prenom = String(user.prenom || '').trim().toLowerCase();
+  const candidats = [
+    String(user.id || '').toLowerCase(),
+    userLabel(user).toLowerCase(),
+    String(user.email || '').toLowerCase(),
+  ].filter(Boolean);
+  if (candidats.includes(cle)) return true;
+  // « Andréa Nobel » appartient bien à la commerciale dont le prénom est « Andréa ».
+  return !!prenom && cle.split(/\s+/)[0] === prenom;
+}
+
 /* Catalogue des permissions ajustables (libellés FR -> clés internes) */
 export const PERMS: { g: string; items: [string, string][] }[] = [
   { g: 'Tableau de bord', items: [['dashboardView', 'Voir le tableau de bord']] },
@@ -214,7 +234,7 @@ type CrmModulePerm = { view?: boolean; add?: boolean; edit?: boolean; delete?: b
    – la forme CRM { module: {view,add,edit,delete} }, seule présente aujourd'hui ;
    – la forme plate Nobel World { devisCreate:true, … }, si le CRM la stocke un jour.
    On accepte les deux ; la forme plate a toujours le dernier mot. */
-export function parseProfilePerms(raw: unknown, role: string): PermMap {
+export function parseProfilePerms(raw: unknown, role: string, rawScopes?: unknown): PermMap {
   let obj: Record<string, unknown> = {};
   if (typeof raw === 'string' && raw.trim()) {
     try { obj = JSON.parse(raw); } catch { obj = {}; }
@@ -234,7 +254,25 @@ export function parseProfilePerms(raw: unknown, role: string): PermMap {
 
   const out: PermMap = {};
   if (Object.keys(crm).length) Object.assign(out, crmToNobelWorld(crm, role));
+  /* Les portées ne peuvent qu'élargir un module DÉJÀ visible, jamais en ouvrir un. */
+  if (out.patientsView !== false) Object.assign(out, appliquerScopes(rawScopes));
   Object.assign(out, flat);
+  return out;
+}
+
+/* `profiles.scopes` dit, côté CRM, si l'utilisateur voit « all » ou « own » par module.
+   C'est l'équivalent exact des permissions « Voir tous les … (sinon : les siens) » de
+   Nobel World : sans ce pont, une commerciale à qui le CRM accorde patients:"all" ne
+   verrait ici que les fiches dont elle est l'autrice. */
+function appliquerScopes(raw: unknown): PermMap {
+  let obj: Record<string, unknown> = {};
+  if (typeof raw === 'string' && raw.trim()) {
+    try { obj = JSON.parse(raw); } catch { return {}; }
+  } else if (raw && typeof raw === 'object') {
+    obj = raw as Record<string, unknown>;
+  } else return {};
+  const out: PermMap = {};
+  if (typeof obj.patients === 'string') out.patientViewAll = obj.patients === 'all';
   return out;
 }
 
@@ -244,7 +282,7 @@ function crmToNobelWorld(crm: Record<string, CrmModulePerm>, role: string): Perm
   const base = roleDefaultPerms(role);
   const devis = m('devis'), factures = m('factures'), patients = m('patients');
   const paiements = m('paiements'), finances = m('finances'), dashboard = m('dashboard');
-  const equipe = m('equipe'), analyses = m('analyses');
+  const analyses = m('analyses');
 
   const has = (p: CrmModulePerm, f: keyof CrmModulePerm) => p[f] === true;
   const known = (k: string) => Object.prototype.hasOwnProperty.call(crm, k);
@@ -269,11 +307,18 @@ function crmToNobelWorld(crm: Record<string, CrmModulePerm>, role: string): Perm
     out.patientEdit = has(patients, 'edit');
     out.patientDelete = has(patients, 'delete');
   }
-  if (known('paiements') || known('finances')) {
-    out.paymentView = has(paiements, 'view') || has(finances, 'view');
-    out.paymentEdit = has(paiements, 'edit') || has(paiements, 'add') || has(finances, 'edit');
+  /* `paiements` prime sur `finances` : quand le CRM refuse explicitement le module
+     Paiements à quelqu'un, le module Finances ne doit pas le lui rendre par la bande. */
+  if (known('paiements')) {
+    out.paymentView = has(paiements, 'view');
+    out.paymentEdit = has(paiements, 'edit') || has(paiements, 'add');
+  } else if (known('finances')) {
+    out.paymentView = has(finances, 'view');
+    out.paymentEdit = has(finances, 'edit');
   }
   if (known('analyses')) out.viewOwnStats = has(analyses, 'view');
-  if (known('equipe')) out.usersManage = has(equipe, 'edit');
+  /* `equipe` est l'annuaire du CRM, pas l'administration de Nobel World : on ne
+     dérive JAMAIS `usersManage` (qui ouvre le module Utilisateurs et l'onglet
+     Permissions) d'un droit d'édition sur l'annuaire. Il reste porté par le rôle. */
   return out;
 }

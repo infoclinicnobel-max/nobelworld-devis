@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Confirm, Drawer, Empty, Field, Input, Textarea, useDirtyGuard } from './ui';
 import { Ico } from './icons';
 import { useApp } from './AppContext';
-import { can, userLabel } from '@/lib/perms';
+import { can, estDeMoi } from '@/lib/perms';
 import { patientName } from '@/lib/calc';
 import type { Patient } from '@/lib/types';
 
@@ -18,10 +18,7 @@ export function PatientsView() {
   const [edit, setEdit] = useState<Partial<Patient> | null>(null);
   const [del, setDel] = useState<Patient | null>(null);
   const seeAllPat = can(user, 'all') || can(user, 'patientViewAll');
-  const moi = [user.id, userLabel(user), user.email].map((x) => String(x).toLowerCase());
-  const list = seeAllPat
-    ? data.patients
-    : data.patients.filter((p) => moi.includes(String(p.createdBy || '').toLowerCase()));
+  const list = seeAllPat ? data.patients : data.patients.filter((p) => estDeMoi(user, p.createdBy));
 
   return (
     <>

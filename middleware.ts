@@ -27,6 +27,19 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+/* Le matcher doit couvrir TOUTES les pages : une page qui y échappe ne
+   rafraîchit pas le cookie de session, et celle-ci s'éteint pendant que
+   l'utilisateur la consulte.
+
+   L'ancienne écriture excluait tout chemin finissant par .js / .json / .png…
+   Elle fonctionnait pour l'unique page actuelle, mais aurait silencieusement
+   exclu une future page dont l'URL se serait terminée ainsi. On énumère donc
+   les seules exclusions légitimes — les ressources internes de Next et les
+   fichiers PWA, qui ne doivent surtout pas être réécrits — et rien d'autre.
+   Vérifié au banc d'essai : un chargement de « / » porteur d'un cookie
+   déclenche bien un grant_type=refresh_token suivi de /auth/v1/user. */
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|json|js)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|_next/webpack-hmr|favicon\\.ico|favicon\\.png|apple-touch-icon\\.png|icon-192\\.png|icon-512\\.png|icon-512-maskable\\.png|manifest\\.json|sw\\.js).*)',
+  ],
 };

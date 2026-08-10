@@ -10,13 +10,15 @@ import { SIDEBAR_LOGO } from '@/lib/logos';
    L'ancien système maison de Code.gs (jeton signé, hachage local) a disparu.
    ------------------------------------------------------------------------- */
 export function Login({
-  onLogin,
+  onLogin, resterConnecteParDefaut = true,
 }: {
   onLogin: (email: string, password: string, remember: boolean) => Promise<void>;
+  /** Reprise du dernier choix de l'utilisateur ; coché par défaut. */
+  resterConnecteParDefaut?: boolean;
 }) {
   const [email, setEmail] = useState('');
   const [pwd, setPwd] = useState('');
-  const [remember, setRemember] = useState(true);
+  const [remember, setRemember] = useState(resterConnecteParDefaut);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async () => {
@@ -86,6 +88,11 @@ export function Login({
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Rester
             connecté
           </label>
+          <p style={{ fontSize: 11.5, color: 'var(--muted-2)', margin: '-8px 0 14px', lineHeight: 1.5 }}>
+            {remember
+              ? 'Vous resterez connecté sur cet appareil, même après fermeture du navigateur.'
+              : 'Votre session sera fermée à la fermeture du navigateur — à réserver aux postes partagés.'}
+          </p>
           {err && (
             <div style={{ color: 'var(--bad)', fontSize: 13, marginBottom: 12, fontWeight: 500, lineHeight: 1.5 }}>
               {err}

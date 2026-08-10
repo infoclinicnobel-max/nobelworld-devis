@@ -84,3 +84,27 @@ Le projet Vercel `nobelworld-devis` (équipe Nobel Dent) est relié à ce dépô
 `claude/adoring-keller-qi3eez` est déployée en **préproduction** pour la recette du PDF ;
 `main` n'est pas fusionnée tant que cette recette n'est pas validée, afin que GitHub Pages
 continue de servir l'ancienne application.
+
+## Session : ce qui la maintient ouverte
+
+L'exigence métier est de rester connecté le plus longtemps possible. Trois pièces
+y concourent, et aucune ne doit être retirée sans mesure préalable.
+
+1. **`lib/supabase/client.ts`** — `persistSession` et `autoRefreshToken` explicites,
+   et surtout des méthodes `getAll` / `setAll` maison. `@supabase/ssr` 0.5.2 écrase
+   toute `maxAge` fournie ; fournir nos propres accès aux cookies est le seul moyen
+   d'honorer la case « Rester connecté » et de marquer les cookies `Secure`.
+2. **`lib/session.ts`** — au retour de l'utilisateur (`visibilitychange`, `focus`,
+   `pageshow`, `online`) et toutes les 4 minutes, on relance `startAutoRefresh()` et
+   on renouvelle le jeton s'il expire dans moins de 10 minutes. Le navigateur gèle
+   les minuteurs des onglets en arrière-plan : sans ce rattrapage, on revient avec
+   un jeton mort.
+3. **`components/App.tsx`** — **une erreur passagère ne déconnecte jamais.** Seul un
+   refus explicite (`AccesRefuseError` : profil absent, rôle interdit, compte
+   désactivé) ferme la session. Tout le reste affiche un écran de reprise et
+   réessaie par paliers. Un verrou de ré-entrance (`enCours`) empêche qu'un
+   renouvellement de jeton relance un cycle de chargement, et inversement.
+
+Banc d'essai : `faux-supabase.js` + `recette-session.js` (hors dépôt, décrits dans le
+compte rendu de la consigne 02). Le jeton y expire en 20 s au lieu de 24 h, ce qui
+permet de rejouer en quelques minutes ce qui prendrait une journée.

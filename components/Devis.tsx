@@ -6,6 +6,7 @@ import {
 } from './ui';
 import { Ico } from './icons';
 import { DevisDoc, type DocHandlers } from './DevisDoc';
+import { SelecteurModele } from './SelecteurModele';
 import { DocumentView } from './DocumentView';
 import { PatientForm } from './Patients';
 import { useApp } from './AppContext';
@@ -15,7 +16,7 @@ import {
 } from '@/lib/defaults';
 import { can, estDeMoi, userLabel } from '@/lib/perms';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
-import type { DocRecord } from '@/lib/types';
+import type { DocRecord, Modele } from '@/lib/types';
 
 /* =========================================================================
    DEVIS
@@ -297,6 +298,66 @@ export function DevisEditor({
   };
   useNavOverlay(closeGuard);
 
+  /* ---- Écriture d'un modèle du catalogue dans le document ----
+     Deux règles, valables pour un acte comme pour une option :
+
+     1. La destination suit la section d'où la liste a été ouverte. C'est le
+        sélecteur qui rend le modèle, l'éditeur qui décide où l'écrire — un
+        modèle choisi depuis les options ne peut donc plus finir dans les actes.
+     2. Le libellé REMPLACE, il ne s'ajoute jamais. On remplit la première ligne
+        vide, sinon on en crée une neuve. Rien n'est concaténé à un texte
+        existant, et une saisie manuelle n'est jamais écrasée.
+
+     La description est recopiée à cet instant précis et n'est plus relue du
+     catalogue : un devis déjà parti chez une patiente ne bouge pas si le
+     catalogue évolue. */
+  const descriptionDe = (m: Modele) => (typeof m.description === 'string' ? m.description : '');
+
+  const signaler = (m: Modele, description: string) => {
+    const alertes: string[] = [];
+    if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
+    if (!description.trim()) alertes.push('aucune description au catalogue, à rédiger à la main');
+    toast('Modèle appliqué : ' + m.nom + (alertes.length ? ' — ' + alertes.join(' ; ') : ''));
+  };
+
+  const acteDepuisModele = (m: Modele) => {
+    const description = descriptionDe(m);
+    setF((s) => {
+      const actes = [...(s.actes || [])];
+      const vide = actes.findIndex((a) => !String(a.acte || '').trim() && !String(a.inclus || '').trim());
+      const ligne = { id: vide >= 0 ? actes[vide].id : uid('a'), acte: m.nom, inclus: description };
+      if (vide >= 0) actes[vide] = ligne;
+      else actes.push(ligne);
+      return { ...s, actes };
+    });
+    signaler(m, description);
+  };
+
+  const optDepuisModele = (m: Modele) => {
+    const description = descriptionDe(m);
+    setF((s) => {
+      const options = [...(s.options || [])];
+      const vide = options.findIndex(
+        (o) => !String(o.nom || '').trim() && !String(o.detail || '').trim() && !Number(o.prix),
+      );
+      // Libellé et détail dans DEUX champs distincts — jamais « libellé: description ».
+      const ligne = {
+        id: vide >= 0 ? options[vide].id || uid('o') : uid('o'),
+        nom: m.nom,
+        detail: description,
+        qty: 1,
+        // Le tarif du catalogue est proposé ; il reste modifiable à la main.
+        prix: vide >= 0 && Number(options[vide].prix) ? Number(options[vide].prix) : m.prixBase,
+        // Une option issue du catalogue se décide en consultation, comme les autres.
+        retenue: vide >= 0 ? options[vide].retenue !== false : false,
+      };
+      if (vide >= 0) options[vide] = ligne;
+      else options.push(ligne);
+      return { ...s, options };
+    });
+    signaler(m, description);
+  };
+
   const on: DocHandlers = {
     editable: true,
     patients: data.patients,
@@ -314,7 +375,18 @@ export function DevisEditor({
     setExc: (i, v) => setF((s) => ({ ...s, exc: (s.exc || []).map((x, j) => (j === i ? v : x)) })),
     rmExc: (i) => setF((s) => ({ ...s, exc: (s.exc || []).filter((_, j) => j !== i) })),
     moveExc: (from, to) => setF((s) => ({ ...s, exc: arrMove(s.exc, from, to) })),
-    addOpt: () => setF((s) => ({ ...s, options: [...(s.options || []), { nom: '', qty: 1, prix: 0 }] })),
+    /* Une option NEUVE naît « non retenue » : elle s'affiche avec son prix sans
+       gonfler le montant engagé, tant que la patiente ne l'a pas décidée en
+       consultation. Les options d'avant ce lot n'ont pas ce champ et restent
+       comptées — voir estRetenue() dans lib/calc.ts. */
+    addOpt: () =>
+      setF((s) => ({
+        ...s,
+        options: [...(s.options || []), { id: uid('o'), nom: '', detail: '', qty: 1, prix: 0, retenue: false }],
+      })),
+    modeles: data.modeles,
+    acteDepuisModele,
+    optDepuisModele,
     setOpt: (i, k, v) =>
       setF((s) => ({ ...s, options: (s.options || []).map((o, j) => (j === i ? { ...o, [k]: v } : o)) })),
     rmOpt: (i) => setF((s) => ({ ...s, options: (s.options || []).filter((_, j) => j !== i) })),
@@ -324,32 +396,18 @@ export function DevisEditor({
     rmImp: (i) => setF((s) => ({ ...s, importantList: (s.importantList || []).filter((_, j) => j !== i) })),
   };
 
-  /* Applique un modèle du catalogue. La description est RECOPIÉE une fois dans
-     l'acte, à cet instant précis ; elle n'est jamais relue du catalogue ensuite.
-     C'est ce qui garantit deux choses : le texte saisi à la main par le
-     chirurgien n'est jamais écrasé, et un devis déjà parti chez une patiente ne
-     change pas si le catalogue évolue. Le catalogue propose, le chirurgien dispose. */
-  const applyModele = (id: string) => {
-    const m = data.modeles.find((x) => x.id === id);
-    if (!m) return;
-    const description = typeof m.description === 'string' ? m.description : '';
+  /* Modèle appliqué au DEVIS ENTIER depuis le panneau latéral : il porte, en
+     plus de l'acte, les prestations incluses / exclues et le forfait. L'écriture
+     de l'acte passe par acteDepuisModele — une seule règle, pas deux. */
+  const applyModele = (m: Modele) => {
     setF((s) => ({
       ...s,
-      modeleId: id,
-      actes: [
-        // Les actes déjà saisis sont conservés tels quels ; seuls les vides sont retirés.
-        ...(s.actes || []).filter((a) => a.acte || a.inclus),
-        { id: uid('a'), acte: m.nom, inclus: description },
-      ],
+      modeleId: m.id,
       inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
       exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
       forfait: Number(s.forfait) || m.prixBase,
     }));
-    const alertes: string[] = [];
-    if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
-    // Une prestation sans description ne casse rien : case vide, à compléter à la main.
-    if (!description.trim()) alertes.push('aucune description au catalogue, à rédiger dans « Inclus / détail »');
-    toast('Modèle appliqué : ' + m.nom + (alertes.length ? ' — ' + alertes.join(' ; ') : ''));
+    acteDepuisModele(m);
   };
 
   const total = totalOf(f);
@@ -495,14 +553,13 @@ export function DevisEditor({
               </Select>
             </div>
             <h4>Modèle de devis</h4>
-            <Select value={f.modeleId || ''} onChange={(e) => applyModele(e.target.value)}>
-              <option value="">— Appliquer un modèle —</option>
-              {data.modeles.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nom} · {m.surDevis ? 'sur devis' : money(m.prixBase, cur)}
-                </option>
-              ))}
-            </Select>
+            <SelecteurModele
+              modeles={data.modeles}
+              devise={cur}
+              libelle="Appliquer un modèle au devis"
+              className="btn btn-sm"
+              onChoisir={applyModele}
+            />
             <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '6px 0 0' }}>
               Catalogue en lecture seule (CRM Clinic Nobel). Une prestation absente doit y être ajoutée par le CRM.
             </p>

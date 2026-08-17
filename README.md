@@ -50,6 +50,19 @@ Autres invariants :
   patiente. Appliquer un modèle **recopie** la description dans l'acte à cet instant ; elle
   n'est plus jamais relue ensuite. Une prestation sans description donne une case
   « Inclus / détail » vide, signalée à l'écran, jamais une erreur.
+- **Une option ne gonfle pas le montant engagé.** Une option se décide en consultation :
+  tant qu'elle n'est pas *retenue*, elle s'affiche avec son prix dans un bloc distinct et
+  reste hors du total, de l'acompte et du reste à payer. ⚠ Le champ `retenue` **absent vaut
+  `true`** — toutes les options écrites avant ce lot en sont dépourvues, et les lire comme
+  non retenues retrancherait des montants de devis déjà acceptés. La lecture passe toujours
+  par `estRetenue()` de `lib/calc.ts`, jamais par `o.retenue` en direct.
+- **Le groupement et la recherche du catalogue vivent dans `lib/catalogue.ts`**, source unique
+  des deux listes « Appliquer un modèle » (actes et options). La recherche porte aussi sur
+  `synonymes`, ce qui permet de trouver « liposuccion 360 + BBL » quand la ligne s'appelle
+  « SAFE BBL + Liposuccion Vaser HD 360° ».
+- **Un modèle appliqué remplace, il ne concatène jamais.** Il remplit la première ligne vide
+  de la section d'où la liste a été ouverte, sinon il en crée une neuve — libellé et détail
+  dans deux champs distincts, pour un acte comme pour une option.
 - **La numérotation ne se calcule jamais côté navigateur.** La fonction Postgres atomique
   `nw_prochain_numero(type)` incrémente et renvoie `D-2026-000040` / `F-2026-000024`.
 - Les rôles `chirurgien` et `anonyme` sont refusés par la base : ils n'accèdent pas à
@@ -71,6 +84,7 @@ sur 880 identiques**, pagination 2 pages des deux côtés.
 npm run typecheck
 npm run build
 npx tsx scripts/verifier-mappage.ts instantane.json   # aller-retour colonnes ⇄ objets
+npx tsx scripts/totaux-devis.ts devis.json ref.json   # montants inchangés, devis par devis
 ```
 
 `scripts/verifier-mappage.ts` rejoue chaque ligne réellement présente en base à travers

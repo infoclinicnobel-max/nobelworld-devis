@@ -28,9 +28,20 @@ export interface Acte {
 }
 
 export interface DocOption {
+  /** Identifiant de ligne. Absent sur les options d'avant ce lot : l'index sert alors de clé. */
+  id?: string;
   nom: string;
+  /** Détail de l'option, séparé du libellé — même structure qu'un acte. */
+  detail?: string;
   qty?: number;
   prix: number;
+  /* ATTENTION — la valeur ABSENTE vaut `true`, jamais `false`.
+     Toutes les options déjà en base sont dépourvues de ce champ et comptent
+     dans le total du devis que la patiente détient. Les lire comme « non
+     retenues » changerait rétroactivement des montants déjà acceptés.
+     Seules les options créées après ce lot naissent à `false`.
+     La lecture passe TOUJOURS par estRetenue() de lib/calc.ts. */
+  retenue?: boolean;
 }
 
 /** Devis ET facture partagent la même forme : le PDF est rendu par un seul composant. */
@@ -114,6 +125,8 @@ export interface Modele {
   description: string;
   /** Commentaire interne du CRM. Ne doit jamais figurer sur un document patient. */
   notesInternes: string;
+  /** Autres appellations de la prestation, côté CRM. Sert uniquement à la recherche. */
+  synonymes: string[];
   inc: string[];
   exc: string[];
   dureeJours: number | null;

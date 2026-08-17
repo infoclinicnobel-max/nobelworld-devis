@@ -262,6 +262,9 @@ export function rowToModele(r: Row): Modele {
        injectée par chargerTout(). */
     description: '',
     notesInternes: str(r.notes),
+    /* `synonymes` est un text[] Postgres (et non un jsonb comme inclusions/exclusions).
+       Il ne s'affiche nulle part : il élargit seulement la recherche du sélecteur. */
+    synonymes: Array.isArray(r.synonymes) ? r.synonymes.map(String) : [],
     inc: Array.isArray(r.inclusions) ? r.inclusions.map(String) : [],
     exc: Array.isArray(r.exclusions) ? r.exclusions.map(String) : [],
     dureeJours: r.duree_sejour_jours == null ? null : Number(r.duree_sejour_jours),

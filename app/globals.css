@@ -323,6 +323,18 @@ details.pdfopts[open] summary{margin-bottom:8px}
 .doc .optrow:last-child{border-bottom:none}
 .doc .optrow .lbl{flex:1}
 .doc .optrow .price{font-weight:700;color:var(--blue-deep);white-space:nowrap}
+/* Détail d'une option — même rôle que la colonne « Inclus / détail » d'un acte.
+   Absent des options d'avant ce lot : rien ne s'affiche, rien ne bouge. */
+.doc .optrow .lbl .det{display:block;font-size:11.5px;line-height:1.5;color:var(--muted);margin-top:2px}
+/* Options à décider en consultation : montrées avec leur prix, hors du total. */
+.doc .optdec{margin-top:10px;border:1px dashed var(--line);border-radius:12px;padding:8px 16px 10px;background:#fcfdfe}
+.doc .optdec-t{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-bottom:4px}
+.doc .optdec .optrow{font-size:12.5px}
+.doc .optdec-s{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-top:1px solid var(--line);margin-top:6px;padding-top:7px;font-size:12.5px;color:var(--muted)}
+.doc .optdec-s .v{font-weight:700;color:var(--blue-deep);white-space:nowrap}
+/* Case « retenue » — éditeur seulement, jamais imprimée. */
+.optret{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.addrow-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .doc .paybox{background:#f7f9fb;border:1px solid var(--line);border-radius:12px;padding:10px 16px;margin-top:2px}
 .doc .paybox .l{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:13.5px;color:var(--muted)}
 .doc .paybox .l .v{font-weight:600;color:var(--ink)}
@@ -351,6 +363,21 @@ input.ed[type=date]{font:inherit}
 .addrow{border:1px dashed #cfe0f1;background:#fff;color:var(--blue);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin-top:9px;display:inline-flex;align-items:center;gap:6px}
 .addrow:hover{background:#f0f5fb;border-color:var(--blue)}
 
+/* ---------- Sélecteur de modèle (actes et options) — écran seulement ---------- */
+.modsel{position:relative;display:inline-block}
+.modsel-pan{position:absolute;z-index:60;top:calc(100% + 6px);left:0;width:430px;max-width:78vw;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px rgba(15,27,45,.18);overflow:hidden}
+.modsel-q{position:relative;padding:9px;border-bottom:1px solid var(--line);background:var(--surface)}
+.modsel-q .ic{position:absolute;left:19px;top:50%;transform:translateY(-50%);color:var(--muted-2)}
+.modsel-q input{width:100%;padding:7px 10px 7px 32px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:12.5px;outline:none}
+.modsel-q input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(28,108,176,.1)}
+.modsel-list{max-height:330px;overflow:auto}
+.modsel-grp{position:sticky;top:0;background:#eef3f9;color:var(--blue-deep);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 12px}
+.modsel-it{display:flex;width:100%;gap:10px;align-items:baseline;justify-content:space-between;border:none;background:transparent;text-align:left;padding:7px 12px;font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;border-bottom:1px solid #f1f5f9}
+.modsel-it:hover{background:#eaf2fb}
+.modsel-it .nm{flex:1;line-height:1.35}
+.modsel-it .px{color:var(--blue-deep);font-weight:700;white-space:nowrap;font-size:12px}
+.modsel-vide{padding:14px 12px;font-size:12px;line-height:1.5;color:var(--muted)}
+
 /* ---------- Éditeur plein écran ---------- */
 .editor-overlay{position:fixed;inset:0;background:rgba(15,27,45,.5);z-index:70;display:flex;animation:fade .18s}
 .editor{margin:auto;width:100%;height:100%;background:var(--surface);display:flex;flex-direction:column}
@@ -377,7 +404,8 @@ input.ed[type=date]{font:inherit}
   #print-clone .doc{width:100%;gap:0;display:block;box-shadow:none}
   #print-clone,#print-clone *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
   #print-clone .ed,#print-clone select.ed,#print-clone input.ed{border-color:transparent !important;background:transparent !important;box-shadow:none !important;appearance:none;-webkit-appearance:none}
-  #print-clone .delrow,#print-clone .addrow,#print-clone .draghand{display:none !important}
+  #print-clone .delrow,#print-clone .addrow,#print-clone .draghand,#print-clone .modsel,
+  #print-clone .optret{display:none !important}
   #print-clone .pdfwarn{display:none !important}
   #print-clone .doc .page{box-shadow:none;width:100%;box-sizing:border-box;margin:0;min-height:287mm}
   #print-clone .doc .page.page-break{break-before:page;page-break-before:always}

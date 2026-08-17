@@ -2,7 +2,22 @@
    Règle d'or : un devis envoyé est figé. Rien ici ne relit le catalogue :
    les montants proviennent exclusivement du document lui-même. */
 
-import type { DocRecord, Paiement, Patient } from './types';
+import type { DocOption, DocRecord, Paiement, Patient } from './types';
+
+/* ----- Options retenues -----
+   Une option se décide en consultation : tant qu'elle n'est pas retenue, elle
+   s'affiche avec son prix mais n'entre ni dans le total, ni dans l'acompte, ni
+   dans le reste à payer.
+
+   ⚠ RÈGLE DE NON-RÉGRESSION : le champ ABSENT vaut `true`. Toutes les options
+   écrites avant ce lot en sont dépourvues ; les lire comme non retenues
+   retrancherait des montants de devis déjà acceptés, dont les patientes
+   détiennent une copie. `undefined` et `null` valent donc « retenue ». */
+export function estRetenue(o: DocOption | null | undefined): boolean {
+  return !!o && o.retenue !== false;
+}
+
+const montantOption = (o: DocOption) => Number(o.qty || 1) * Number(o.prix || 0);
 
 export function patientName(p: Partial<Patient> | null | undefined): string {
   return p ? `${p.prenom || ''} ${p.nom || ''}`.trim() : '—';
@@ -10,8 +25,7 @@ export function patientName(p: Partial<Patient> | null | undefined): string {
 
 export function devisTotal(d: DocRecord): number {
   const lines = (d.lignes || []).reduce((s, l) => s + Number(l.qty || 1) * Number(l.pu || 0), 0);
-  const opts = (d.options || []).reduce((s, o) => s + Number(o.qty || 1) * Number(o.prix || 0), 0);
-  return lines + opts;
+  return lines + optsSum(d);
 }
 
 export function paidFor(paiements: Paiement[] | undefined, refId: string | undefined): number {
@@ -20,8 +34,19 @@ export function paidFor(paiements: Paiement[] | undefined, refId: string | undef
     .reduce((s, p) => s + Number(p.montant || 0), 0);
 }
 
+/** Somme des options RETENUES — la seule qui entre dans le montant engagé. */
 export function optsSum(r: DocRecord): number {
-  return (r.options || []).reduce((s, o) => s + Number(o.qty || 1) * Number(o.prix || 0), 0);
+  return (r.options || []).filter(estRetenue).reduce((s, o) => s + montantOption(o), 0);
+}
+
+/** Options laissées à décider en consultation : affichées, jamais comptées. */
+export function optionsADecider(r: DocRecord): DocOption[] {
+  return (r.options || []).filter((o) => !estRetenue(o));
+}
+
+/** Somme de TOUTES les options, retenues ou non — sert à la ligne « si toutes retenues ». */
+export function optsSumToutes(r: DocRecord): number {
+  return (r.options || []).reduce((s, o) => s + montantOption(o), 0);
 }
 
 /* total « affiché » : si un forfait est saisi, total = forfait + options ;
@@ -44,6 +69,16 @@ export function remiseMontant(r: DocRecord | null | undefined): number {
 
 export function totalOf(r: DocRecord): number {
   return Math.max(0, totalAvantRemise(r) - remiseMontant(r));
+}
+
+/* Montant qu'atteindrait le devis si la patiente retenait TOUTES les options.
+   Calculé en rejouant le même total sur une copie où chaque option est retenue,
+   plutôt qu'en additionnant à la main : une remise en pourcentage porte ainsi
+   sur la bonne base, et il ne peut pas exister deux formules divergentes. */
+export function totalSiToutesOptions(r: DocRecord): number {
+  const opts = r.options || [];
+  if (!opts.some((o) => !estRetenue(o))) return totalOf(r);
+  return totalOf({ ...r, options: opts.map((o) => ({ ...o, retenue: true })) });
 }
 
 /* ----- Paiements / factures ----- */

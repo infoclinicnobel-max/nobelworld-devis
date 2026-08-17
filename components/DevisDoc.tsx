@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { EditableText } from './ui';
+import { SelecteurModele } from './SelecteurModele';
 import { LogoCN } from './LogoCN';
 import { useAppMaybe } from './AppContext';
 import { fmtDate, fmtPhone, money, normalizeDate } from '@/lib/format';
@@ -10,9 +11,10 @@ import {
 } from '@/lib/defaults';
 import { can, userLabel, type AppUser } from '@/lib/perms';
 import {
-  devisTotal, factPayments, optsSum, patientName, remiseMontant, totalOf,
+  devisTotal, estRetenue, factPayments, optionsADecider, optsSum, patientName, remiseMontant,
+  totalOf, totalSiToutesOptions,
 } from '@/lib/calc';
-import type { Acte, DocRecord, Paiement, Patient } from '@/lib/types';
+import type { Acte, DocRecord, Modele, Paiement, Patient } from '@/lib/types';
 
 /* =========================================================================
    DOCUMENT PREMIUM (devis & facture) + impression PDF
@@ -38,7 +40,12 @@ export interface DocHandlers {
   rmExc: (i: number) => void;
   moveExc: (from: number, to: number) => void;
   addOpt: () => void;
-  setOpt: (i: number, k: string, v: string | number) => void;
+  /* Catalogue et écritures depuis un modèle — fournis par l'éditeur seulement.
+     Le sélecteur rend le modèle choisi ; c'est l'éditeur qui décide où l'écrire. */
+  modeles?: Modele[];
+  acteDepuisModele?: (m: Modele) => void;
+  optDepuisModele?: (m: Modele) => void;
+  setOpt: (i: number, k: string, v: string | number | boolean) => void;
   rmOpt: (i: number) => void;
   addImp: () => void;
   setImp: (i: number, v: string) => void;
@@ -102,6 +109,7 @@ export function DevisDoc({
   const inc = record.inc || [];
   const exc = record.exc || [];
   const options = record.options || [];
+  const optionsRetenues = options.filter(estRetenue);
 
   // Priorité : 1) texte personnalisé du document, 2) Paramètres PDF, 3) défauts intégrés.
   // Un texte stocké identique aux défauts intégrés ou aux Paramètres actuels est traité
@@ -138,6 +146,12 @@ export function DevisDoc({
   const forfait = Number(record.forfait || 0);
   const sousTotal = forfait > 0 ? forfait : devisTotal(record);
   const oSum = optsSum(record);
+  /* Options laissées à décider en consultation : affichées avec leur prix, mais
+     hors du total, de l'acompte et du reste à payer. Une option d'avant ce lot
+     n'a pas de champ `retenue` : estRetenue() la compte, et le document ne
+     bouge pas d'un centime. */
+  const optsADecider = optionsADecider(record);
+  const totalToutesOptions = totalSiToutesOptions(record);
   const total = totalOf(record);
   const remM = remiseMontant(record);
   const paidN = Number(paid || 0);
@@ -267,6 +281,29 @@ export function DevisDoc({
           )}
         </div>
       </div>
+      {/* Options à décider — hors du montant engagé, sous les yeux de la patiente.
+          Ne s'affiche que s'il en existe : un devis d'avant ce lot n'a rien de plus.
+          Absent de l'ÉDITEUR : là, chaque option se modifie dans la section Options,
+          case « retenue » comprise, et l'afficher deux fois n'aiderait personne.
+          L'aperçu et le PDF, eux, montrent le document tel que la patiente le reçoit. */}
+      {!E && optsADecider.length > 0 && (
+        <div className="optdec">
+          <div className="optdec-t">Options — à décider en consultation</div>
+          {optsADecider.map((o, i) => (
+            <div key={o.id || 'od' + i} className="optrow">
+              <span className="lbl">
+                {o.nom}
+                {o.detail ? <span className="det">{o.detail}</span> : null}
+              </span>
+              <span className="price tnum">{money(Number(o.qty || 1) * Number(o.prix || 0), cur)}</span>
+            </div>
+          ))}
+          <div className="optdec-s">
+            <span>Total si toutes les options sont retenues</span>
+            <span className="v tnum">{money(totalToutesOptions, cur)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -670,24 +707,57 @@ export function DevisDoc({
                   )}
                 </tbody>
               </table>
-              {E && <button className="addrow" onClick={on!.addActe}>+ Ajouter un acte</button>}
+              {E && (
+                <div className="addrow-bar">
+                  <button className="addrow" onClick={on!.addActe}>+ Ajouter un acte</button>
+                  {!!on!.modeles?.length && (
+                    <SelecteurModele
+                      modeles={on!.modeles}
+                      devise={cur}
+                      libelle="Appliquer un modèle à un acte"
+                      onChoisir={(m) => on!.acteDepuisModele!(m)}
+                    />
+                  )}
+                </div>
+              )}
             </div>
 
-            {(options.length > 0 || E) && (
+            {/* Hors éditeur, cette section ne montre que les options RETENUES :
+                celles à décider ont leur propre bloc sous le reste à payer.
+                Toutes les options d'avant ce lot sont retenues — affichage inchangé. */}
+            {((E ? options.length > 0 : optionsRetenues.length > 0) || E) && (
               <div className="sec">
-                <div className="seclbl">Option{options.length > 1 ? 's' : ''}</div>
+                <div className="seclbl">
+                  Option{(E ? options.length : optionsRetenues.length) > 1 ? 's' : ''}
+                </div>
                 <div>
-                  {options.map((o, i) => (
-                    <div key={i} className="optrow">
+                  {(E ? options : optionsRetenues).map((o, i) => (
+                    <div key={o.id || 'o' + i} className="optrow">
                       {E ? (
                         <>
-                          <EditableText
-                            value={o.nom}
-                            placeholder="Option"
-                            onChange={(v) => on!.setOpt(i, 'nom', v)}
-                            className="lbl"
-                            style={{ flex: 1 }}
-                          />
+                          <span className="lbl" style={{ flex: 1 }}>
+                            <EditableText
+                              value={o.nom}
+                              placeholder="Option"
+                              onChange={(v) => on!.setOpt(i, 'nom', v)}
+                              style={{ width: '100%' }}
+                            />
+                            <EditableText
+                              multiline
+                              value={o.detail || ''}
+                              placeholder="Détail de l'option"
+                              onChange={(v) => on!.setOpt(i, 'detail', v)}
+                              className="det"
+                            />
+                          </span>
+                          <label className="optret" title="Retenue : l'option compte dans le total">
+                            <input
+                              type="checkbox"
+                              checked={estRetenue(o)}
+                              onChange={(e) => on!.setOpt(i, 'retenue', e.target.checked)}
+                            />
+                            retenue
+                          </label>
                           <input
                             className="ed tnum"
                             style={{ width: '8ch', textAlign: 'right' }}
@@ -700,14 +770,29 @@ export function DevisDoc({
                         </>
                       ) : (
                         <>
-                          <span className="lbl">{o.nom}</span>
+                          <span className="lbl">
+                            {o.nom}
+                            {o.detail ? <span className="det">{o.detail}</span> : null}
+                          </span>
                           <span className="price tnum">{money((o.qty || 1) * o.prix, cur)}</span>
                         </>
                       )}
                     </div>
                   ))}
                 </div>
-                {E && <button className="addrow" onClick={on!.addOpt}>+ Ajouter une option</button>}
+                {E && (
+                  <div className="addrow-bar">
+                    <button className="addrow" onClick={on!.addOpt}>+ Ajouter une option</button>
+                    {!!on!.modeles?.length && (
+                      <SelecteurModele
+                        modeles={on!.modeles}
+                        devise={cur}
+                        libelle="Appliquer un modèle à une option"
+                        onChoisir={(m) => on!.optDepuisModele!(m)}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

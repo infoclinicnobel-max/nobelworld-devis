@@ -17,7 +17,7 @@ import {
 import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } from './types';
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
-import { COLONNES_AUTORISEES, planifierRemontee, type Divergence } from './fiche';
+import { COLONNES_AUTORISEES, factureEstVivante, planifierRemontee, type Divergence } from './fiche';
 import { ROLES_SANS_ACCES } from './perms';
 
 /** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite. */
@@ -226,7 +226,10 @@ export interface ResultatRemontee {
       entière : les 36 autres colonnes ne sont pas même mentionnées à Postgres ;
    3. UPDATE et jamais INSERT — un devis ne crée jamais une fiche patiente.
       Un `patient_id` introuvable n'écrit rien et se signale. */
-export async function remonterVersFiche(devis: DocRecord): Promise<ResultatRemontee> {
+export async function remonterVersFiche(
+  devis: DocRecord,
+  source: 'devis' | 'facture' = 'devis',
+): Promise<ResultatRemontee> {
   const vide: ResultatRemontee = { statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [] };
   const id = String(devis.patientId || '').trim();
   if (!id) return vide;
@@ -236,6 +239,17 @@ export async function remonterVersFiche(devis: DocRecord): Promise<ResultatRemon
   const { data: fiche, error } = await sb.from('patients').select(colonnes).eq('id', id).maybeSingle();
   if (error) throw new Error('Fiche patiente illisible : ' + error.message);
   if (!fiche) return { ...vide, statut: 'fiche-introuvable' };
+
+  /* Hiérarchie : la facture vivante l'emporte, quelle que soit la date. Un devis
+     rouvert après la facture qui en est née ne reprend jamais la main — sinon le
+     prix d'AVANT la remise réécrase le prix final. Même règle que le rattrapage,
+     via factureEstVivante() de lib/fiche.ts. */
+  if (source === 'devis') {
+    const { data: fv } = await sb.from('nw_factures').select('statut').eq('patient_id', id);
+    if ((fv || []).some((x) => factureEstVivante((x as { statut?: unknown }).statut))) {
+      return { statut: 'rien-a-ecrire', ecrits: {}, patient: '', divergences: [], dejaConformes: [] };
+    }
+  }
 
   const f = fiche as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();

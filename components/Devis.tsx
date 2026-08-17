@@ -74,7 +74,7 @@ export function DevisView() {
        « on n'écrit que dans un champ vide » rend l'opération rejouable, la
        seconde remontée ne fait rien. Aucune garde supplémentaire n'est utile. */
     try {
-      const r = await remonterVersFiche(fac);
+      const r = await remonterVersFiche(fac, 'facture');
       if (r.statut === 'ecrit') {
         const noms = Object.keys(r.ecrits)
           .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c).join(', ');

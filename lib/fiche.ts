@@ -118,3 +118,45 @@ export const STATUTS_QUI_REMONTENT = ['accepte'];
 
 export const remonteeAutomatique = (statut: unknown) =>
   STATUTS_QUI_REMONTENT.includes(String(statut || ''));
+
+/* ------------------------------------------- hiérarchie des documents
+
+   Règle métier, dite par le client : « Dans tous les cas, on réalise un devis.
+   Après le devis, on peut faire une remise […] et après modifier le devis et la
+   facture ; c'est la facture finale. Concernant notre CRM, si on note des
+   montants, c'est qu'ils doivent payer ce montant. »
+
+   Donc : LA FACTURE VIVANTE L'EMPORTE, quelle que soit la date d'enregistrement.
+   Un devis rouvert après coup ne reprend jamais la main sur la facture qui en
+   est née — sans quoi le prix d'AVANT la remise réécrase le prix final
+   (Gaëlle Alma : devis 7 900 €, facture 6 400 €, CRM 6 400 €).
+
+   Le devis n'est source que s'il n'existe aucune facture vivante. */
+
+/** Statuts qui font d'un document une source légitime pour le CRM. */
+export const STATUTS_FACTURE_VIVANTE = ['envoye', 'accepte', 'payee', 'partielle'];
+
+export const factureEstVivante = (statut: unknown) =>
+  STATUTS_FACTURE_VIVANTE.includes(String(statut || ''));
+
+export interface DocumentSource { type: 'devis' | 'facture'; doc: DocRecord }
+
+/* Choisit le document qui parle au CRM pour une patiente donnée.
+   Employé par le flux ET par le rattrapage : une seule règle, pas deux. */
+export function documentQuiFaitFoi(
+  devis: DocRecord[], factures: DocRecord[],
+): DocumentSource | null {
+  const recent = (a: DocRecord, b: DocRecord) =>
+    String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+
+  const facturesVivantes = factures.filter((f) => factureEstVivante(f.statut)).sort(recent);
+  if (facturesVivantes.length) return { type: 'facture', doc: facturesVivantes[0] };
+
+  /* Aucune facture vivante — cas d'Ashley Munao, dont l'unique facture est
+     annulée et qui n'a rien versé. On retombe sur le devis accepté : c'est
+     le seul engagement qui subsiste. Un brouillon ne fait jamais foi, ni en
+     devis ni en facture : il n'engage personne, et la première écriture
+     dans un champ vide étant définitive, elle doit venir d'un document sûr. */
+  const devisAcceptes = devis.filter((d) => remonteeAutomatique(d.statut)).sort(recent);
+  return devisAcceptes.length ? { type: 'devis', doc: devisAcceptes[0] } : null;
+}

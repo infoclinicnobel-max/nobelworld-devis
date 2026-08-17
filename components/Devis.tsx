@@ -69,6 +69,22 @@ export function DevisView() {
     fac.devise = PB.currency || fac.devise || '€';
     await save('factures', fac, `a transformé ${d.numero} en facture ${numero}`);
     await save('devis', { ...d, statut: 'accepte' });
+    /* La facture nourrit la fiche patiente au même titre que le devis, par la
+       MÊME fonction. Elle peut naître d'un devis déjà remonté : la règle
+       « on n'écrit que dans un champ vide » rend l'opération rejouable, la
+       seconde remontée ne fait rien. Aucune garde supplémentaire n'est utile. */
+    try {
+      const r = await remonterVersFiche(fac);
+      if (r.statut === 'ecrit') {
+        const noms = Object.keys(r.ecrits)
+          .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c).join(', ');
+        toast(`Fiche de ${r.patient} complétée : ${noms}`);
+      }
+      if (r.divergences.length || r.statut === 'fiche-introuvable') setRapport({ r, numero });
+    } catch (e) {
+      console.error('[CN][fiche] remontée depuis la facture impossible', e);
+      toast("Facture créée, mais la fiche patiente n'a pas pu être mise à jour.", 'err');
+    }
     toast('Facture créée : ' + numero);
     go('factures');
   };

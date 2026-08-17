@@ -10,18 +10,43 @@
 
 import type { DocRecord, Patient } from './types';
 
-/** Les QUATRE colonnes de `patients` que ce lot peut écrire. Aucune autre. */
+/** Les QUATRE colonnes de `patients` que ce lot peut écrire. Aucune autre.
+
+    `hopital` en a été RETIRÉ : ce n'est pas une saisie du document mais
+    l'adresse des Paramètres recopiée à sa création, et le CRM écrit
+    « Avrasya Hospital » là où le document écrit « Avrasya Hastanesi —
+    Istanbul, Türkiye ». Sept alertes sans désaccord réel useraient l'alerte
+    avant qu'elle ne serve. */
 export const CHAMPS_REMONTES = [
   { devis: 'dateIntervention', fiche: 'dateOperation', libelle: "date d'opération" },
   { devis: 'date', fiche: 'dateDevis', libelle: 'date du devis' },
   { devis: 'chirurgien', fiche: 'medecin', libelle: 'chirurgien' },
-  { devis: 'hopital', fiche: 'hopital', libelle: 'hôpital' },
+  { devis: 'forfait', fiche: 'budget', libelle: 'budget' },
 ] as const;
+
+/* `patients.budget` est du texte, en chiffres bruts : « 8500 », sans espace ni
+   symbole — les 52 valeurs déjà en base vérifient toutes ^[0-9]+$. C'est le
+   FORFAIT du document, jamais un total recalculé : sur D-2026-000029, forfait
+   4 900 € + options 3 670 € = 8 570 €, et aucun total n'est stocké. */
+const enChiffresBruts = (v: unknown) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? String(n) : '';
+};
+
+/** Valeur du document, mise au format de la colonne CRM visée. */
+function valeurPourFiche(champ: { devis: string; fiche: string }, doc: Record<string, unknown>): string {
+  if (champ.fiche === 'budget') return enChiffresBruts(doc[champ.devis]);
+  return String(doc[champ.devis] ?? '').trim();
+}
 
 /** Garde-fou : toute écriture est confrontée à cette liste avant de partir. */
 export const COLONNES_AUTORISEES: ReadonlySet<string> = new Set<string>(CHAMPS_REMONTES.map((c) => c.fiche));
 
-/* `patients."procedure"` et `patients.stade` sont VOLONTAIREMENT absents :
+/* `patients."procedure"`, `patients.procedures` et `patients.stade` sont
+   VOLONTAIREMENT absents. « Reçu » et « Solde » aussi : ils ne se stockent pas,
+   ils se calculent depuis nw_paiements (somme des montants par patiente, puis
+   budget − reçu). Les écrire figerait un solde que le prochain paiement
+   démentirait.
    - `procedure` emploie un vocabulaire distinct de celui du catalogue
      (« BBL / Lipofilling fessier » contre « Lipofilling Fessiers (BBL) ») ;
      y déverser les libellés du catalogue scinderait la colonne en deux
@@ -59,14 +84,16 @@ export function normaliser(v: unknown): string {
     .trim();
 }
 
-/** Ce que le devis écrirait, ce qu'il laisse tel quel, ce qu'il signale. */
+/* Ce que le document écrirait, ce qu'il laisse tel quel, ce qu'il signale.
+   UNE seule implémentation pour les devis ET les factures : les deux partagent
+   la forme DocRecord, et deux copies divergeraient au premier changement. */
 export function planifierRemontee(devis: DocRecord, fiche: Patient): PlanRemontee {
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
 
   for (const champ of CHAMPS_REMONTES) {
-    const valeurDevis = String((devis as Record<string, unknown>)[champ.devis] ?? '').trim();
+    const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>);
     const valeurCrm = String((fiche as unknown as Record<string, unknown>)[champ.fiche] ?? '');
     if (!valeurDevis) continue;                     // le devis n'a rien à proposer
     if (vide(valeurCrm)) { aEcrire[champ.fiche] = valeurDevis; continue; }

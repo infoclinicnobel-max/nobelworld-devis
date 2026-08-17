@@ -105,11 +105,44 @@ export function rowToFacture(r: Row): DocRecord {
   };
 }
 
+/* ---- Préservation de l'ABSENCE du champ `retenue` ----
+
+   `estRetenue()` protège la LECTURE : une option sans le champ compte dans le
+   total. Mais rien ne protégeait l'ÉCRITURE. Un enregistrement qui pose
+   `retenue: false` sur une option héritée la fait sortir du total, et le devis
+   change de montant sans que personne ne l'ait décidé — c'est ce qui a fait
+   passer D-2026-000040 de 10 500 € à 8 500 €, puis engendré une facture à
+   8 500 €.
+
+   Règle : une option qui n'avait pas le champ n'en reçoit pas un tant que sa
+   valeur reste `false`. Seul un `true`, ou une option neuve, écrit la clé.
+   Le rapprochement se fait par `id` quand il existe, par rang sinon — les
+   options d'avant ce lot n'ont pas d'identifiant. */
+function preserverAbsenceRetenue(d: DocRecord, options: unknown): unknown {
+  if (!Array.isArray(options)) return options;
+  const avant = (((d._row as Row | undefined)?.contenu as Row | undefined)?.options ?? []) as Row[];
+  if (!Array.isArray(avant) || !avant.length) return options;
+  const parId = new Map<string, Row>();
+  avant.forEach((o) => { if (o && typeof o.id === 'string') parId.set(o.id, o); });
+
+  return (options as Row[]).map((o, i) => {
+    if (!o || typeof o !== 'object' || o.retenue !== false) return o;
+    const origine = (typeof o.id === 'string' && parId.get(o.id)) || avant[i];
+    // L'option existait-elle, et sans le champ ? Alors on ne le crée pas.
+    if (origine && typeof origine === 'object' && !('retenue' in origine)) {
+      const { retenue, ...reste } = o;
+      void retenue;
+      return reste;
+    }
+    return o;
+  });
+}
+
 function contenuOf(d: DocRecord): Row {
   const c: Row = {};
   for (const k of CONTENU_KEYS) {
     const v = (d as Row)[k];
-    if (v !== undefined) c[k] = v;
+    if (v !== undefined) c[k] = k === 'options' ? preserverAbsenceRetenue(d, v) : v;
   }
   return c;
 }

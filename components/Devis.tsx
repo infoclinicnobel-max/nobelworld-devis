@@ -15,8 +15,11 @@ import {
   composeIncExc, DEFAULT_IMPORTANT, DEFAULT_PAIEMENT_NOTE, PDF_TEXTS, settingsImpLines, UNSAVED_MSG,
 } from '@/lib/defaults';
 import { can, estDeMoi, userLabel } from '@/lib/perms';
+import { CHAMPS_REMONTES } from '@/lib/fiche';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
 import type { DocRecord, Modele } from '@/lib/types';
+import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
+import { remonteeAutomatique } from '@/lib/fiche';
 
 /* =========================================================================
    DEVIS
@@ -26,6 +29,7 @@ export function DevisView() {
   const [editor, setEditor] = useState<DocRecord | null>(null); // {} ou devis existant
   const [viewDoc, setViewDoc] = useState<DocRecord | null>(null);
   const [del, setDel] = useState<DocRecord | null>(null);
+  const [rapport, setRapport] = useState<{ r: ResultatRemontee; numero: string } | null>(null);
   const [filter, setFilter] = useState('tous');
   const seeAllDevis = can(user, 'all') || can(user, 'devisViewAll');
   let list = seeAllDevis ? data.devis : data.devis.filter((d) => estDeMoi(user, d.createdBy));
@@ -169,8 +173,10 @@ export function DevisView() {
           list={list}
           onClose={() => setEditor(null)}
           onPreview={(d) => setViewDoc(d)}
+          onRapportFiche={(r, numero) => setRapport({ r, numero })}
         />
       )}
+      {rapport && <RapportFiche {...rapport} onClose={() => setRapport(null)} />}
       {viewDoc && (
         <DocumentView
           record={viewDoc}
@@ -198,15 +204,75 @@ export function DevisView() {
 }
 
 /* =========================================================================
+   RAPPORT DE REMONTÉE — ce que le devis n'a PAS écrit, et pourquoi.
+
+   C'est la pièce maîtresse de la règle « le devis propose, le CRM garde » :
+   une valeur du CRM différente de celle du devis n'est jamais écrasée, et le
+   silence serait pire que l'écrasement — l'utilisateur croirait la fiche à
+   jour. On l'arrête donc sur une fenêtre, pas sur un message fugace.
+   ------------------------------------------------------------------------- */
+function RapportFiche({
+  r, numero, onClose,
+}: { r: ResultatRemontee; numero: string; onClose: () => void }) {
+  const introuvable = r.statut === 'fiche-introuvable';
+  return (
+    <Modal
+      title={introuvable ? 'Fiche patiente introuvable' : 'Fiche patiente — divergences non écrasées'}
+      onClose={onClose}
+      footer={<button className="btn btn-primary" onClick={onClose}>J&apos;ai compris</button>}
+    >
+      {introuvable ? (
+        <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>
+          Le devis <b>{numero}</b> est rattaché à une fiche patiente qui n&apos;existe pas dans le CRM.
+          <b> Rien n&apos;a été écrit.</b> Un devis ne crée jamais une fiche : signalez le rattachement
+          à l&apos;administrateur du CRM.
+        </p>
+      ) : (
+        <>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 0 }}>
+            La fiche de <b>{r.patient}</b> contient déjà des valeurs différentes de celles du devis{' '}
+            <b>{numero}</b>. <b>Le CRM a été conservé, rien n&apos;a été écrasé.</b> Corrigez à la main
+            du côté où la valeur est fausse.
+          </p>
+          <table style={{ fontSize: 12.5 }}>
+            <thead>
+              <tr><th>Champ</th><th>Dans le CRM (conservé)</th><th>Dans le devis</th></tr>
+            </thead>
+            <tbody>
+              {r.divergences.map((d) => (
+                <tr key={d.colonne}>
+                  <td className="t-strong">{d.libelle}</td>
+                  <td>{d.valeurCrm}</td>
+                  <td className="muted">{d.valeurDevis}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!!Object.keys(r.ecrits).length && (
+            <p className="muted" style={{ fontSize: 12, lineHeight: 1.55, marginBottom: 0 }}>
+              Les champs qui étaient vides ont bien été complétés :{' '}
+              {Object.keys(r.ecrits)
+                .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c)
+                .join(', ')}.
+            </p>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/* =========================================================================
    ÉDITEUR DE DEVIS (WYSIWYG — page A4 éditable au clic)
    ------------------------------------------------------------------------- */
 export function DevisEditor({
-  devis, onClose, onPreview, list,
+  devis, onClose, onPreview, list, onRapportFiche,
 }: {
   devis: DocRecord;
   onClose: () => void;
   onPreview?: (d: DocRecord) => void;
   list?: DocRecord[];
+  onRapportFiche?: (r: ResultatRemontee, numero: string) => void;
 }) {
   const { data, user, save, nextNumber, toast } = useApp();
   const cur = data.parametres.currency || '€';
@@ -457,7 +523,7 @@ export function DevisEditor({
   const canPages = can(user, 'all') || can(user, 'pagesEdit');
   const canBank = can(user, 'all') || can(user, 'paramEdit');
 
-  const finish = async (statut: string | null, preview: boolean) => {
+  const finish = async (statut: string | null, preview: boolean, forcer = false) => {
     if (saving) return; // anti double-clic
     // Un devis envoyé ou accepté est figé : on ne le réécrit jamais sans confirmation explicite.
     if (isEdit && estFige(curDevis) && dirty) {
@@ -475,6 +541,28 @@ export function DevisEditor({
     try {
       const saved = await persist(statut);
       toast(isEdit ? 'Devis mis à jour ✓' : 'Devis créé : ' + saved.numero);
+      /* Remontée vers la fiche patiente. Elle ne peut jamais faire échouer
+         l'enregistrement du devis : le document prime, la recopie est un
+         confort. Une erreur ici se signale et s'arrête là. */
+      if (forcer || remonteeAutomatique(saved.statut)) {
+        try {
+          const r = await remonterVersFiche(saved);
+          if (r.statut === 'ecrit') {
+            const noms = Object.keys(r.ecrits)
+              .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c)
+              .join(', ');
+            toast(`Fiche de ${r.patient} complétée : ${noms}`);
+          } else if (r.statut === 'rien-a-ecrire' && !r.divergences.length) {
+            if (forcer) toast('Fiche patiente déjà à jour, rien à reporter.');
+          }
+          if (r.divergences.length || r.statut === 'fiche-introuvable') {
+            onRapportFiche?.(r, saved.numero || '');
+          }
+        } catch (e) {
+          console.error('[CN][fiche] remontée impossible', e);
+          toast('Devis enregistré, mais la fiche patiente n\'a pas pu être mise à jour.', 'err');
+        }
+      }
       onClose();
       if (preview && onPreview) onPreview(saved);
     } catch (e) {
@@ -662,6 +750,20 @@ export function DevisEditor({
               <button className="btn btn-sm" onClick={on.addInc}><Ico.plus size={14} />Prestation incluse</button>
               <button className="btn btn-sm" onClick={on.addOpt}><Ico.plus size={14} />Option</button>
             </div>
+            <h4>Fiche patiente</h4>
+            <button
+              className="btn btn-sm"
+              disabled={saving || !f.patientId}
+              title={f.patientId ? '' : 'Choisissez une patiente'}
+              onClick={() => finish(f.statut || null, false, true)}
+            >
+              <Ico.check size={14} />Reporter vers la fiche CRM
+            </button>
+            <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '6px 0 0' }}>
+              Date d&apos;opération, date du devis, chirurgien et hôpital. Un champ déjà renseigné
+              dans le CRM n&apos;est jamais écrasé : la divergence vous est signalée.
+              {' '}Le report est automatique dès que le devis passe à <b>accepté</b>.
+            </p>
             <details className="pdfopts">
               <summary>Options PDF du document</summary>
               <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '0 0 10px' }}>

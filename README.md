@@ -63,6 +63,16 @@ Autres invariants :
 - **Un modèle appliqué remplace, il ne concatène jamais.** Il remplit la première ligne vide
   de la section d'où la liste a été ouverte, sinon il en crée une neuve — libellé et détail
   dans deux champs distincts, pour un acte comme pour une option.
+- **Le devis nourrit la fiche patiente, il ne la corrige pas.** À l'acceptation d'un devis,
+  quatre champs — et quatre seulement — remontent vers `patients` : `dateOperation`,
+  `dateDevis`, `medecin`, `hopital`. ⚠ **On n'écrit que dans un champ vide** (chaîne vide :
+  ces colonnes sont `text NOT NULL DEFAULT ''`, un test `is null` ne trouverait rien). Une
+  valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
+  divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.
+  `patients."procedure"` et `patients.stade` restent hors périmètre. Voir `lib/fiche.ts`.
+- **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
+  « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
+  crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.
 - **La numérotation ne se calcule jamais côté navigateur.** La fonction Postgres atomique
   `nw_prochain_numero(type)` incrémente et renvoie `D-2026-000040` / `F-2026-000024`.
 - Les rôles `chirurgien` et `anonyme` sont refusés par la base : ils n'accèdent pas à

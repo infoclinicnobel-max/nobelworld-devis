@@ -17,6 +17,7 @@ import {
 import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } from './types';
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
+import { COLONNES_AUTORISEES, planifierRemontee, type Divergence } from './fiche';
 import { ROLES_SANS_ACCES } from './perms';
 
 /** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite. */
@@ -202,6 +203,57 @@ export async function supprimer(collection: Collection, id: string): Promise<voi
   }
   const { error } = await supabase().from(table).delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/* --------------------------------------------- remontée vers la fiche CRM */
+
+export interface ResultatRemontee {
+  statut: 'ecrit' | 'rien-a-ecrire' | 'fiche-introuvable' | 'sans-fiche';
+  /** Nom de la patiente, quand la fiche a été retrouvée. */
+  patient?: string;
+  ecrits: Record<string, string>;
+  divergences: Divergence[];
+  dejaConformes: string[];
+}
+
+/* Reporte vers `patients` les quatre champs du devis, et EUX SEULS.
+
+   Trois précautions, dans cet ordre :
+   1. la fiche est relue en base juste avant de décider — comparer à un cache
+      du navigateur reviendrait à écraser une correction faite entre-temps par
+      l'assistante, ce que ce lot existe précisément pour empêcher ;
+   2. UPDATE ciblé sur les quatre colonnes nommées, jamais un upsert de ligne
+      entière : les 36 autres colonnes ne sont pas même mentionnées à Postgres ;
+   3. UPDATE et jamais INSERT — un devis ne crée jamais une fiche patiente.
+      Un `patient_id` introuvable n'écrit rien et se signale. */
+export async function remonterVersFiche(devis: DocRecord): Promise<ResultatRemontee> {
+  const vide: ResultatRemontee = { statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [] };
+  const id = String(devis.patientId || '').trim();
+  if (!id) return vide;
+
+  const sb = supabase();
+  const colonnes = ['id', 'prenom', 'nom', ...COLONNES_AUTORISEES].join(',');
+  const { data: fiche, error } = await sb.from('patients').select(colonnes).eq('id', id).maybeSingle();
+  if (error) throw new Error('Fiche patiente illisible : ' + error.message);
+  if (!fiche) return { ...vide, statut: 'fiche-introuvable' };
+
+  const f = fiche as unknown as Record<string, unknown>;
+  const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
+  const plan = planifierRemontee(devis, f as never);
+  const base = { patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes };
+
+  const colonnesEcrites = Object.keys(plan.aEcrire);
+  if (!colonnesEcrites.length) return { statut: 'rien-a-ecrire', ecrits: {}, ...base };
+
+  /* Ceinture et bretelles : une colonne hors des quatre autorisées ne part pas. */
+  const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
+  if (interdite) {
+    throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
+  }
+
+  const { error: err2 } = await sb.from('patients').update(plan.aEcrire).eq('id', id);
+  if (err2) throw new Error('Report vers la fiche impossible : ' + err2.message);
+  return { statut: 'ecrit', ecrits: plan.aEcrire, ...base };
 }
 
 /* ------------------------------------------------------------- paramètres */

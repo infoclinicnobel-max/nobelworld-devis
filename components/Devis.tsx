@@ -324,25 +324,32 @@ export function DevisEditor({
     rmImp: (i) => setF((s) => ({ ...s, importantList: (s.importantList || []).filter((_, j) => j !== i) })),
   };
 
+  /* Applique un modèle du catalogue. La description est RECOPIÉE une fois dans
+     l'acte, à cet instant précis ; elle n'est jamais relue du catalogue ensuite.
+     C'est ce qui garantit deux choses : le texte saisi à la main par le
+     chirurgien n'est jamais écrasé, et un devis déjà parti chez une patiente ne
+     change pas si le catalogue évolue. Le catalogue propose, le chirurgien dispose. */
   const applyModele = (id: string) => {
     const m = data.modeles.find((x) => x.id === id);
     if (!m) return;
+    const description = typeof m.description === 'string' ? m.description : '';
     setF((s) => ({
       ...s,
       modeleId: id,
       actes: [
+        // Les actes déjà saisis sont conservés tels quels ; seuls les vides sont retirés.
         ...(s.actes || []).filter((a) => a.acte || a.inclus),
-        { id: uid('a'), acte: m.nom, inclus: m.description || '' },
+        { id: uid('a'), acte: m.nom, inclus: description },
       ],
       inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
       exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
       forfait: Number(s.forfait) || m.prixBase,
     }));
-    toast(
-      m.surDevis
-        ? `Modèle appliqué : ${m.nom} — tarif sur devis, saisissez le forfait`
-        : 'Modèle appliqué : ' + m.nom,
-    );
+    const alertes: string[] = [];
+    if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
+    // Une prestation sans description ne casse rien : case vide, à compléter à la main.
+    if (!description.trim()) alertes.push('aucune description au catalogue, à rédiger dans « Inclus / détail »');
+    toast('Modèle appliqué : ' + m.nom + (alertes.length ? ' — ' + alertes.join(' ; ') : ''));
   };
 
   const total = totalOf(f);

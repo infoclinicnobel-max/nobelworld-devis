@@ -110,7 +110,10 @@ export interface Modele {
   prixBase: number;
   prixStandard: number | null;
   surDevis: boolean;
+  /** Description patient, issue de nw_catalogue_descriptions. Vide si absente. */
   description: string;
+  /** Commentaire interne du CRM. Ne doit jamais figurer sur un document patient. */
+  notesInternes: string;
   inc: string[];
   exc: string[];
   dureeJours: number | null;

@@ -28,6 +28,7 @@ la liste blanche `TABLES_ECRITURE` de `lib/data.ts`, et l'interface.
 | Table | Droit de Nobel World |
 | --- | --- |
 | `nw_devis`, `nw_factures`, `nw_paiements`, `nw_historique`, `nw_options`, `nw_parametres` | lecture + écriture |
+| `nw_catalogue_descriptions` | lecture (alimentée par le client, hors application) |
 | `patients` | lecture + écriture, **jamais de suppression** (liste unique partagée) |
 | `catalogue_interventions`, `catalogue_correspondances`, `profiles` | **lecture seule** |
 | toute autre table (`rdvs`, `finances`, `taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
@@ -43,6 +44,12 @@ Autres invariants :
   documents déjà partis chez des patientes.
 - **Le catalogue est en lecture seule.** Une prestation manquante est signalée à l'écran ;
   l'application ne crée jamais de ligne au catalogue.
+- **La description patient d'une prestation vit dans `nw_catalogue_descriptions`**, pas dans
+  `catalogue_interventions.notes` : cette colonne porte du commentaire interne au CRM
+  (arbitrages de tarif, doublons signalés) qui n'a rien à faire sur un document remis à une
+  patiente. Appliquer un modèle **recopie** la description dans l'acte à cet instant ; elle
+  n'est plus jamais relue ensuite. Une prestation sans description donne une case
+  « Inclus / détail » vide, signalée à l'écran, jamais une erreur.
 - **La numérotation ne se calcule jamais côté navigateur.** La fonction Postgres atomique
   `nw_prochain_numero(type)` incrémente et renvoie `D-2026-000040` / `F-2026-000024`.
 - Les rôles `chirurgien` et `anonyme` sont refusés par la base : ils n'accèdent pas à

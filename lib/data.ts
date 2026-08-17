@@ -63,6 +63,7 @@ export async function chargerTout(): Promise<AppData> {
   const sb = supabase();
   const [
     param, patients, devis, factures, paiements, options, historique, profiles, catalogue, corresp,
+    descriptions,
   ] = await Promise.all([
     sb.from('nw_parametres').select('cle,valeur'),
     sb.from('patients').select('*').order('nom', { ascending: true }),
@@ -74,11 +75,25 @@ export async function chargerTout(): Promise<AppData> {
     sb.from('profiles').select('*'),
     sb.from('catalogue_interventions').select('*').order('ordre', { ascending: true, nullsFirst: false }),
     sb.from('catalogue_correspondances').select('libelle_libre,catalogue_id,statut'),
+    sb.from('nw_catalogue_descriptions').select('catalogue_id,description'),
   ]);
 
   const premiereErreur = [param, patients, devis, factures, paiements, options, historique, profiles,
     catalogue, corresp].find((r) => r.error);
   if (premiereErreur?.error) throw new Error(premiereErreur.error.message);
+
+  /* Descriptions patient des prestations du catalogue. Volontairement tolérant :
+     si la table est absente ou vide, les modèles gardent une description vide —
+     une case « INCLUS / DÉTAIL » vide, jamais une erreur ni un « undefined ». */
+  const parCatalogue = new Map<string, string>();
+  if (descriptions.error) {
+    console.warn('[CN][catalogue] descriptions indisponibles :', descriptions.error.message);
+  } else {
+    for (const d of descriptions.data || []) {
+      const texte = typeof d.description === 'string' ? d.description : '';
+      if (texte.trim()) parCatalogue.set(String(d.catalogue_id), texte);
+    }
+  }
 
   const societe = (param.data || []).find((r: any) => r.cle === 'societe');
 
@@ -91,7 +106,10 @@ export async function chargerTout(): Promise<AppData> {
     options: (options.data || []).map(rowToOption),
     historique: (historique.data || []).map(rowToHisto),
     utilisateurs: (profiles.data || []).map(rowToUser),
-    modeles: (catalogue.data || []).map(rowToModele).filter((m) => m.actif),
+    modeles: (catalogue.data || [])
+      .map(rowToModele)
+      .filter((m) => m.actif)
+      .map((m) => ({ ...m, description: parCatalogue.get(m.id) || '' })),
     correspondances: (corresp.data || []).map((c: any) => ({
       libelle: String(c.libelle_libre || ''),
       catalogueId: c.catalogue_id ? String(c.catalogue_id) : null,

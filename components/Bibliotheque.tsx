@@ -84,10 +84,18 @@ export function ModelesView() {
                 Tarif standard : {money(m.prixStandard, cur)}
               </div>
             )}
-            <p className="muted" style={{ fontSize: 12.5, margin: '10px 0', lineHeight: 1.55 }}>
-              {(m.description || '').slice(0, 120)}
-              {(m.description || '').length > 120 ? '…' : ''}
-            </p>
+            {m.description ? (
+              <p className="muted" style={{ fontSize: 12.5, margin: '10px 0', lineHeight: 1.55 }}>
+                {m.description.slice(0, 120)}
+                {m.description.length > 120 ? '…' : ''}
+              </p>
+            ) : (
+              /* Signalé à l'écran plutôt que deviné : sans description, la case
+                 « Inclus / détail » du devis sortira vide et devra être rédigée. */
+              <p style={{ fontSize: 12, margin: '10px 0', lineHeight: 1.55, color: 'var(--warn)' }}>
+                Aucune description — la case « Inclus / détail » du devis sera à rédiger.
+              </p>
+            )}
             <div className="muted" style={{ fontSize: 11.5 }}>
               {(m.inc || []).length} incluses · {(m.exc || []).length} exclues
               {m.dureeNuits != null ? ` · ${m.dureeNuits} nuit(s)` : ''}

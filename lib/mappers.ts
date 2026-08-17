@@ -254,7 +254,14 @@ export function rowToModele(r: Row): Modele {
     prixBase: promo ?? std ?? 0,
     prixStandard: std,
     surDevis: r.tarif_sur_devis === true,
-    description: str(r.notes),
+    /* ATTENTION — ne JAMAIS remettre `notes` ici. C'est du commentaire interne du
+       CRM (« Repris de Nobel World le 2026-08-10, tarif Nobel World retenu »,
+       « DISTINCT du package 5 malgré la ressemblance ») : 20 des 75 lignes en
+       portent, et cela partait mot pour mot dans la case « INCLUS / DÉTAIL » du
+       PDF remis à la patiente. La description vient de nw_catalogue_descriptions,
+       injectée par chargerTout(). */
+    description: '',
+    notesInternes: str(r.notes),
     inc: Array.isArray(r.inclusions) ? r.inclusions.map(String) : [],
     exc: Array.isArray(r.exclusions) ? r.exclusions.map(String) : [],
     dureeJours: r.duree_sejour_jours == null ? null : Number(r.duree_sejour_jours),

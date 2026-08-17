@@ -138,11 +138,47 @@ function preserverAbsenceRetenue(d: DocRecord, options: unknown): unknown {
   });
 }
 
+/* ---- Clés remplies « par défaut » à l'ouverture de l'éditeur ----
+
+   buildForm() pré-remplit un formulaire vierge depuis les Paramètres. Rouvrir
+   un ANCIEN document faisait donc repartir ces défauts à l'enregistrement :
+   - `promoJours` : neuf devis portent 15, cinq portent 8. Rouvrir un devis à
+     15 jours le ramenait au défaut courant — la mention de validité changeait
+     sur un document déjà remis, sans que rien ne le signale ;
+   - `bqIban` et consorts : D-2026-000028 et D-2026-000034 n'en ont pas et en
+     recevaient un à la réouverture.
+
+   Le défaut sert aux documents NEUFS. Sur un document déjà en base :
+   - `promoJours` est gelé sur la valeur stockée (aucune interface ne le règle,
+     toute variation ne peut donc venir que du défaut) ;
+   - les coordonnées bancaires ne sont pas CRÉÉES si elles étaient absentes,
+     mais restent modifiables quand elles existent — le bouton « actualiser les
+     coordonnées bancaires » des factures doit continuer de fonctionner. */
+const CLES_GELEES = ['promoJours'] as const;
+const CLES_NON_CREEES = ['bqNom', 'bqIban', 'bqBic', 'bqAdresse'] as const;
+
+function contenuAncien(d: DocRecord): Row | null {
+  const raw = d._row as Row | undefined;
+  if (!raw || raw.id !== d.id) return null;                 // document neuf
+  const c = raw.contenu;
+  return c && typeof c === 'object' ? (c as Row) : null;
+}
+
 function contenuOf(d: DocRecord): Row {
+  const ancien = contenuAncien(d);
   const c: Row = {};
   for (const k of CONTENU_KEYS) {
     const v = (d as Row)[k];
-    if (v !== undefined) c[k] = k === 'options' ? preserverAbsenceRetenue(d, v) : v;
+    if (v === undefined) continue;
+    if (k === 'options') { c[k] = preserverAbsenceRetenue(d, v); continue; }
+    if (ancien) {
+      if ((CLES_GELEES as readonly string[]).includes(k)) {
+        if (k in ancien) c[k] = ancien[k];                  // gelé sur le stocké
+        continue;                                           // absent → reste absent
+      }
+      if ((CLES_NON_CREEES as readonly string[]).includes(k) && !(k in ancien)) continue;
+    }
+    c[k] = v;
   }
   return c;
 }

@@ -64,3 +64,44 @@ export function filtrerModeles(modeles: Modele[], recherche: string): Modele[] {
     return mots.every((mot) => foin.includes(mot));
   });
 }
+
+/* ------------------------------------------------------ synonymes ambigus
+
+   Treize synonymes du CRM sont portés par DEUX lignes actives à la fois.
+   « lipo 360 » désigne aussi bien un raffermissement cutané à 2 000 € qu'une
+   liposuccion à 3 300 € : deux interventions sans rapport, et un devis qui
+   part avec la mauvaise ligne sans que personne le voie.
+
+   On ne corrige pas la donnée — le catalogue appartient au CRM. On refuse le
+   choix silencieux : quand le terme saisi est porté par plusieurs lignes, on
+   nomme l'ambiguïté, on montre les deux tarifs, et le choix se fait sur le
+   libellé. Aucun coût quand il n'y a pas d'ambiguïté : la liste normale ne
+   change pas d'un pixel. */
+
+export interface Ambiguite {
+  terme: string;
+  lignes: Modele[];
+}
+
+/** Synonymes correspondant à la saisie et portés par plus d'une ligne active. */
+export function detecterAmbiguites(modeles: Modele[], recherche: string): Ambiguite[] {
+  const q = safeLower(recherche).trim();
+  if (q.length < 3) return [];      // trop court pour être un terme métier
+
+  const porteurs = new Map<string, Modele[]>();
+  for (const m of modeles) {
+    for (const syn of m.synonymes || []) {
+      const cle = safeLower(syn).trim();
+      if (!cle || !cle.includes(q)) continue;
+      // Le libellé de la ligne l'emporte : s'il contient déjà la saisie,
+      // le choix n'est pas ambigu pour cette ligne-là.
+      const liste = porteurs.get(cle) || [];
+      if (!liste.includes(m)) liste.push(m);
+      porteurs.set(cle, liste);
+    }
+  }
+  return [...porteurs.entries()]
+    .filter(([, lignes]) => lignes.length > 1)
+    .map(([terme, lignes]) => ({ terme, lignes: [...lignes].sort(parNom) }))
+    .sort((a, b) => a.terme.localeCompare(b.terme, 'fr'));
+}

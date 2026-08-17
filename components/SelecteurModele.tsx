@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ico } from './icons';
 import { money } from '@/lib/format';
-import { filtrerModeles, grouperModeles } from '@/lib/catalogue';
+import { detecterAmbiguites, filtrerModeles, grouperModeles } from '@/lib/catalogue';
 import type { Modele } from '@/lib/types';
 
 /* =========================================================================
@@ -31,6 +31,10 @@ export function SelecteurModele({
   const champ = useRef<HTMLInputElement>(null);
 
   const groupes = useMemo(() => grouperModeles(filtrerModeles(modeles, q)), [modeles, q]);
+  /* Le CRM porte des synonymes partagés par deux prestations. Quand la saisie
+     tombe sur l'un d'eux, on refuse le clic au jugé : on nomme le terme et on
+     fait choisir sur le libellé, tarifs sous les yeux. */
+  const ambiguites = useMemo(() => detecterAmbiguites(modeles, q), [modeles, q]);
   const nbTrouves = groupes.reduce((n, g) => n + g.items.length, 0);
 
   // Fermeture au clic extérieur et à Échap — l'éditeur reste utilisable au clavier.
@@ -73,6 +77,20 @@ export function SelecteurModele({
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
+          {ambiguites.map((a) => (
+            <div key={a.terme} className="modsel-amb">
+              <div className="modsel-amb-t">
+                ⚠ « {a.terme} » désigne {a.lignes.length} prestations différentes au catalogue.
+                Choisissez sur le libellé, pas sur le terme saisi.
+              </div>
+              {a.lignes.map((m) => (
+                <button key={m.id} type="button" className="modsel-it" onClick={() => choisir(m)}>
+                  <span className="nm">{m.nom}</span>
+                  <span className="px">{m.surDevis ? 'sur devis' : money(m.prixBase, devise)}</span>
+                </button>
+              ))}
+            </div>
+          ))}
           <div className="modsel-list">
             {groupes.map((g) => (
               <div key={g.titre}>

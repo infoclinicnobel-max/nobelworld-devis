@@ -19,8 +19,12 @@ import type { Settings } from './defaults';
 import type { AppUser } from './perms';
 import {
   aPaye, COLONNES_AUTORISEES, factureEstVivante, niveauEngagement, planifierRemontee,
+  type Engagement,
   type Divergence,
 } from './fiche';
+import {
+  planifierRendezVous, TYPE_OPERATION, type LigneAgenda, type PlanAgenda,
+} from './agenda';
 import { ROLES_SANS_ACCES } from './perms';
 
 /** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite. */
@@ -221,6 +225,10 @@ export interface ResultatRemontee {
   ecrits: Record<string, string>;
   divergences: Divergence[];
   dejaConformes: string[];
+  /* Ce que le calendrier a reçu, ou l'écart qui l'en a empêché — à DIRE. Sans
+     ce retour, une ligne part au calendrier sans que personne le sache, ou
+     n'y part pas sans que personne l'apprenne. */
+  agenda?: PlanAgenda;
 }
 
 /* Reporte vers `patients` les quatre champs du devis, et EUX SEULS.
@@ -233,6 +241,28 @@ export interface ResultatRemontee {
       entière : les 36 autres colonnes ne sont pas même mentionnées à Postgres ;
    3. UPDATE et jamais INSERT — un devis ne crée jamais une fiche patiente.
       Un `patient_id` introuvable n'écrit rien et se signale. */
+/* ----------------------------------------------- l'agenda, en INSERT seul
+
+   SEULE écriture de Nobel World hors `nw_*` et `patients`, et elle ne passe
+   PAS par `enregistrer()`. C'est délibéré : `TABLES_ECRITURE` commande aussi
+   `supprimer()`, qui n'a de garde particulière que pour `patients`. Y inscrire
+   « rdvs » aurait donc ouvert INSERT, UPDATE **et** DELETE sur l'agenda du CRM
+   par un chemin générique appelable de partout. `rdvs` reste hors de la liste,
+   et n'existe ni dans le type `Collection` ni dans `TABLE_OF` : aucun appelant
+   ne peut la nommer.
+
+   Un seul verbe : `.insert()`. Jamais `.upsert()`, jamais `.update()`, jamais
+   `.delete()`. Et `type` est REPOSÉ ici depuis la constante — la fonction est
+   incapable d'écrire autre chose qu'une opération, même appelée de travers.
+
+   `scripts/garde-agenda.ts` échoue si un second appelant apparaît. */
+async function insererRendezVousOperation(ligne: LigneAgenda): Promise<void> {
+  const { error } = await supabase()
+    .from('rdvs')
+    .insert({ ...ligne, type: TYPE_OPERATION });
+  if (error) throw new Error("Rendez-vous non posé au calendrier : " + error.message);
+}
+
 export async function remonterVersFiche(
   devis: DocRecord,
   source: 'devis' | 'facture' = 'devis',
@@ -245,7 +275,9 @@ export async function remonterVersFiche(
   if (!id) return vide;
 
   const sb = supabase();
-  const colonnes = ['id', 'prenom', 'nom', ...COLONNES_AUTORISEES].join(',');
+  /* `hopital` n'est PAS une colonne remontée — on ne l'écrit jamais — mais le
+     calendrier la recopie, donc il faut la lire. */
+  const colonnes = ['id', 'prenom', 'nom', 'hopital', ...COLONNES_AUTORISEES].join(',');
   const [ficheR, devisR, facturesR, paiementsR] = await Promise.all([
     sb.from('patients').select(colonnes).eq('id', id).maybeSingle(),
     sb.from('nw_devis').select('*').eq('patient_id', id),
@@ -303,18 +335,64 @@ export async function remonterVersFiche(
   };
 
   const colonnesEcrites = Object.keys(plan.aEcrire);
-  if (!colonnesEcrites.length) return { statut: 'rien-a-ecrire', ecrits: {}, ...base };
 
-  /* Ceinture et bretelles : une colonne hors de la liste blanche ne part pas. */
-  const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
-  if (interdite) {
-    throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
+  if (colonnesEcrites.length) {
+    /* Ceinture et bretelles : une colonne hors de la liste blanche ne part pas. */
+    const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
+    if (interdite) {
+      throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
+    }
+    const { error: err2 } = await sb.from('patients').update(plan.aEcrire).eq('id', id);
+    if (err2) throw new Error('Report vers la fiche impossible : ' + err2.message);
   }
 
-  const { error: err2 } = await sb.from('patients').update(plan.aEcrire).eq('id', id);
-  if (err2) throw new Error('Report vers la fiche impossible : ' + err2.message);
-  return { statut: 'ecrit', ecrits: plan.aEcrire, ...base };
+  /* ---- Le calendrier, APRÈS l'écriture de la fiche et HORS du raccourci ----
+
+     Ce pas ne peut pas vivre derrière un « rien à écrire », et c'est le piège
+     central de ce lot : une fiche DÉJÀ complète produit un `aEcrire` vide. Or
+     c'est exactement le cas qui a motivé la demande — Cindy Doli, fiche
+     renseignée, opération absente du calendrier. Brancher l'agenda après le
+     raccourci l'aurait rendu muet précisément là où on l'attendait.
+
+     La date lue est celle de la fiche APRÈS l'écriture : celle qui vient d'être
+     posée, le cas échéant. */
+  const agenda = await poserAuCalendrier(sb, id, { ...f, ...plan.aEcrire }, engagement);
+
+  const statut = colonnesEcrites.length ? 'ecrit' as const : 'rien-a-ecrire' as const;
+  return { statut, ecrits: plan.aEcrire, agenda, ...base };
 }
+
+/* Le SEUL appelant de `insererRendezVousOperation`. La règle en trois cas vit
+   dans `planifierRendezVous` (lib/agenda.ts), pure : le flux et tout rattrapage
+   à venir partagent la même, il ne peut pas en exister deux. */
+async function poserAuCalendrier(
+  sb: ReturnType<typeof supabase>,
+  patientId: string,
+  fiche: Record<string, unknown>,
+  engagement: Engagement,
+): Promise<PlanAgenda> {
+  const { data, error } = await sb
+    .from('rdvs').select('id,type,date').eq('patientId', patientId);
+  if (error) throw new Error('Agenda illisible : ' + error.message);
+
+  const plan = planifierRendezVous(
+    {
+      id: patientId,
+      dateOperation: String(fiche.dateOperation ?? ''),
+      medecin: String(fiche.medecin ?? ''),
+      hopital: String(fiche.hopital ?? ''),
+      stade: String(fiche.stade ?? ''),
+    },
+    (data || []) as { id: string; type: string; date: string }[],
+    { engagement, horodatage: Date.now(), suffixe: suffixeRdv() },
+  );
+  if (plan.cas === 'a-creer') await insererRendezVousOperation(plan.ligne);
+  return plan;
+}
+
+/* Quatre caractères, comme les 48 lignes déjà en base. Hors de `lib/agenda.ts`
+   pour que ce fichier reste pur et sa recette rejouable. */
+const suffixeRdv = () => Math.random().toString(36).slice(2, 6).padEnd(4, '0');
 
 /* ------------------------------------------------------------- paramètres */
 

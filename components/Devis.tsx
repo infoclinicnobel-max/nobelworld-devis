@@ -19,6 +19,7 @@ import { CHAMPS_REMONTES } from '@/lib/fiche';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
+import type { PlanAgenda } from '@/lib/agenda';
 
 /* =========================================================================
    DEVIS
@@ -74,13 +75,20 @@ export function DevisView() {
        seconde remontée ne fait rien. Aucune garde supplémentaire n'est utile. */
     try {
       const r = await remonterVersFiche(fac, 'facture');
+      const rdv = phraseAgenda(r.agenda);
       if (r.statut === 'ecrit') {
         const noms = Object.keys(r.ecrits)
           .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c).join(', ');
         const laisses = r.laisses.map((l) => `${l.libelle} inchangé : ${l.pourquoi}`);
-        toast([`Fiche de ${r.patient} complétée : ${noms}`, ...laisses].join(' · '));
+        toast([`Fiche de ${r.patient} complétée : ${noms}`, ...laisses, ...(rdv ? [rdv] : [])].join(' · '));
+      } else if (rdv) {
+        /* La fiche n'avait rien à recevoir, mais le calendrier si. Sans cette
+           branche, la ligne partirait sans que personne l'apprenne. */
+        toast(`Fiche de ${r.patient} déjà à jour — ${rdv}.`);
       }
-      if (r.divergences.length || r.statut === 'fiche-introuvable') setRapport({ r, numero });
+      if (r.divergences.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
+        setRapport({ r, numero });
+      }
     } catch (e) {
       console.error('[CN][fiche] remontée depuis la facture impossible', e);
       toast("Facture créée, mais la fiche patiente n'a pas pu être mise à jour.", 'err');
@@ -227,13 +235,28 @@ export function DevisView() {
    silence serait pire que l'écrasement — l'utilisateur croirait la fiche à
    jour. On l'arrête donc sur une fenêtre, pas sur un message fugace.
    ------------------------------------------------------------------------- */
+/* Ce que le calendrier a reçu, en une phrase — ou rien à dire.
+
+   Un écart de date ne passe PAS par le message fugace : il monte dans la
+   fenêtre, comme une divergence de budget. Un rendez-vous déjà présent ne se
+   dit pas non plus : annoncer « rien fait » à chaque enregistrement userait
+   l'attention avant que l'information utile n'arrive. */
+function phraseAgenda(a?: PlanAgenda): string | null {
+  if (a?.cas === 'a-creer') return `opération du ${a.ligne.date} ajoutée au calendrier`;
+  return null;
+}
+
 function RapportFiche({
   r, numero, onClose,
 }: { r: ResultatRemontee; numero: string; onClose: () => void }) {
   const introuvable = r.statut === 'fiche-introuvable';
   return (
     <Modal
-      title={introuvable ? 'Fiche patiente introuvable' : 'Fiche patiente — divergences non écrasées'}
+      title={introuvable
+        ? 'Fiche patiente introuvable'
+        : r.divergences.length
+          ? 'Fiche patiente — divergences non écrasées'
+          : 'Agenda — une autre date est déjà posée'}
       onClose={onClose}
       footer={<button className="btn btn-primary" onClick={onClose}>J&apos;ai compris</button>}
     >
@@ -250,26 +273,44 @@ function RapportFiche({
             <b>{numero}</b>. <b>Le CRM a été conservé, rien n&apos;a été écrasé.</b> Corrigez à la main
             du côté où la valeur est fausse.
           </p>
-          <table style={{ fontSize: 12.5 }}>
-            <thead>
-              <tr><th>Champ</th><th>Dans le CRM (conservé)</th><th>Dans le devis</th></tr>
-            </thead>
-            <tbody>
-              {r.divergences.map((d) => (
-                <tr key={d.colonne}>
-                  <td className="t-strong">{d.libelle}</td>
-                  <td>{d.valeurCrm}</td>
-                  <td className="muted">{d.valeurDevis}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {!!r.divergences.length && (
+            <table style={{ fontSize: 12.5 }}>
+              <thead>
+                <tr><th>Champ</th><th>Dans le CRM (conservé)</th><th>Dans le devis</th></tr>
+              </thead>
+              <tbody>
+                {r.divergences.map((d) => (
+                  <tr key={d.colonne}>
+                    <td className="t-strong">{d.libelle}</td>
+                    <td>{d.valeurCrm}</td>
+                    <td className="muted">{d.valeurDevis}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {/* L'agenda peut avoir raison : c'est arrivé. On ne pose donc PAS un
+              second rendez-vous — deux opérations pour une patiente — et on
+              n'écrase pas non plus la date du calendrier. On montre les deux. */}
+          {r.agenda?.cas === 'ecart' && (
+            <p style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+              Le calendrier porte déjà une opération le <b>{r.agenda.dateAgenda}</b>, alors que la
+              fiche annonce le <b>{r.agenda.dateFiche}</b>. <b>Aucun rendez-vous n&apos;a été créé</b> :
+              deux opérations pour une même patiente seraient pires que l&apos;écart. La date de
+              l&apos;agenda peut être la bonne — corrigez du côté qui se trompe.
+            </p>
+          )}
           {!!Object.keys(r.ecrits).length && (
             <p className="muted" style={{ fontSize: 12, lineHeight: 1.55, marginBottom: 0 }}>
               Les champs qui étaient vides ont bien été complétés :{' '}
               {Object.keys(r.ecrits)
                 .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c)
                 .join(', ')}.
+            </p>
+          )}
+          {!!phraseAgenda(r.agenda) && (
+            <p className="muted" style={{ fontSize: 12, lineHeight: 1.55, marginBottom: 0 }}>
+              Et l&apos;{phraseAgenda(r.agenda)}.
             </p>
           )}
         </>
@@ -574,14 +615,20 @@ export function DevisEditor({
           const ecrits = Object.keys(r.ecrits)
             .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c);
           const laisses = r.laisses.map((l) => `${l.libelle} inchangé : ${l.pourquoi}`);
+          const rdv = phraseAgenda(r.agenda);
           if (r.statut === 'ecrit') {
-            const parts = [`${ecrits.length} champ${ecrits.length > 1 ? 's' : ''} écrit${ecrits.length > 1 ? 's' : ''} — ${ecrits.join(', ')}`, ...laisses];
+            const parts = [`${ecrits.length} champ${ecrits.length > 1 ? 's' : ''} écrit${ecrits.length > 1 ? 's' : ''} — ${ecrits.join(', ')}`, ...laisses, ...(rdv ? [rdv] : [])];
             toast(`Fiche de ${r.patient} : ${parts.join(' · ')}`);
+          } else if (rdv) {
+            /* Le cas Cindy Doli : la fiche était déjà complète, donc « rien à
+               écrire » — et pourtant le calendrier vient de recevoir sa ligne.
+               C'est précisément ce que l'ancien raccourci rendait invisible. */
+            toast(`Fiche de ${r.patient} déjà à jour — ${rdv}.`);
           } else if (r.statut === 'rien-a-ecrire' && !r.divergences.length && forcer) {
             const parts = laisses.length ? laisses : [r.raison || 'fiche déjà à jour'];
             toast(`Rien à reporter — ${parts.join(' · ')}.`);
           }
-          if (r.divergences.length || r.statut === 'fiche-introuvable') {
+          if (r.divergences.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
             onRapportFiche?.(r, saved.numero || '');
           }
         } catch (e) {

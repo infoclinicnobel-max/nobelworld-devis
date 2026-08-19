@@ -31,7 +31,8 @@ la liste blanche `TABLES_ECRITURE` de `lib/data.ts`, et l'interface.
 | `nw_catalogue_descriptions` | lecture (alimentée par le client, hors application) |
 | `patients` | lecture + écriture, **jamais de suppression** (liste unique partagée) |
 | `catalogue_interventions`, `catalogue_correspondances`, `profiles` | **lecture seule** |
-| toute autre table (`rdvs`, `finances`, `taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
+| `rdvs` | lecture + **`INSERT` seul**, par une seule porte, et pour le seul type « Opération ». Ni `UPDATE`, ni `DELETE`. **Hors de `TABLES_ECRITURE`** — voir l'invariant plus bas |
+| toute autre table (`finances`, `taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
 
 Autres invariants :
 
@@ -99,6 +100,23 @@ Autres invariants :
   valeur lue>` — si bien que la règle ne vit pas seulement dans le script : rejouer le lot
   n'écrit rien, et un instantané périmé ne peut ni écraser une saisie faite entre-temps ni
   faire reculer un `stade`.
+- **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
+  porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
+  commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien
+  qu'y inscrire `rdvs` aurait ouvert `INSERT`, `UPDATE` **et** `DELETE` par un chemin
+  générique appelable de partout. L'écriture passe donc par
+  `insererRendezVousOperation()`, un `.insert()` en dur qui repose `type` depuis la
+  constante — la fonction est incapable d'écrire autre chose qu'une opération — appelé
+  depuis `remonterVersFiche` et de nulle part ailleurs. `scripts/garde-agenda.ts` **échoue**
+  si un second appelant, un `.update()`, un `.delete()` ou une entrée dans la liste blanche
+  apparaît. La règle vit dans `lib/agenda.ts`, pure, en trois cas : même date → rien ;
+  aucun rendez-vous → on crée ; **autre date → on ne crée rien et on signale**. Le
+  troisième est le seul difficile, et il n'est pas théorique — mesuré, 3 fiches sur 10 le
+  présentaient. Créer alors un second rendez-vous donnerait **deux opérations à une même
+  patiente** ; l'agenda peut avoir raison. ⚠ Le pas agenda ne vit **pas** derrière le
+  raccourci « rien à écrire » : une fiche déjà complète produit un `aEcrire` vide, et c'est
+  exactement le cas qui a motivé le lot. `heure` (`'10:00'`) est une **convention** — aucune
+  source n'en porte — d'où `creePar = 'nobelworld'`, qui permet de retrouver ces lignes.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.
@@ -125,6 +143,8 @@ npm run build
 npx tsx scripts/verifier-mappage.ts instantane.json   # aller-retour colonnes ⇄ objets
 npx tsx scripts/totaux-devis.ts devis.json ref.json   # montants inchangés, devis par devis
 npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les règles de la remontée
+npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
+npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

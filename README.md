@@ -86,6 +86,19 @@ Autres invariants :
   valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
   divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.
   `patients.procedures` (pluriel) et `hopital` restent hors périmètre. Voir `lib/fiche.ts`.
+- **Le rattrapage des fiches a été passé le 19 août 2026** : **41 champs sur 13 fiches**,
+  aucune ligne créée ni supprimée. Sauvegarde préalable dans
+  `public.sauvegarde_patients_20260819` — `enable row level security` dans la même
+  migration que le `create table`, un `create table as` ne portant aucune politique et la
+  copie serait sinon lisible par `anon`. Le décompte ne vient pas du script mais d'une
+  comparaison avec cette sauvegarde ; les **34 autres colonnes** en sont ressorties
+  identiques ligne à ligne, `updated_at` compris (il n'y a pas de déclencheur sur
+  `patients`). Le rapport gagne un mode `--sql` qui **imprime** les `UPDATE` au lieu de les
+  passer : le fichier n'ouvre toujours aucune connexion, et le SQL est relu avant d'être
+  exécuté. **Chaque ordre porte sa propre garde** — `and coalesce("colonne", '') = <la
+  valeur lue>` — si bien que la règle ne vit pas seulement dans le script : rejouer le lot
+  n'écrit rien, et un instantané périmé ne peut ni écraser une saisie faite entre-temps ni
+  faire reculer un `stade`.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.
@@ -111,6 +124,9 @@ npm run typecheck
 npm run build
 npx tsx scripts/verifier-mappage.ts instantane.json   # aller-retour colonnes ⇄ objets
 npx tsx scripts/totaux-devis.ts devis.json ref.json   # montants inchangés, devis par devis
+npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les règles de la remontée
+npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
+npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```
 
 `scripts/verifier-mappage.ts` rejoue chaque ligne réellement présente en base à travers

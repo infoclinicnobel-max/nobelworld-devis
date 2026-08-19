@@ -1,4 +1,4 @@
-/* Rapport de rattrapage des fiches CRM — N'ÉCRIT RIEN.
+/* Rapport de rattrapage des fiches CRM — N'ÉCRIT RIEN, ET N'OUVRE AUCUNE CONNEXION.
 
    Pourquoi un script et non du SQL : le rapport doit employer EXACTEMENT la
    même comparaison et la même hiérarchie que le flux. Réécrites en SQL, elles
@@ -8,7 +8,13 @@
    de lib/fiche.ts : il ne peut pas exister deux règles.
 
    Usage :
-     npx tsx scripts/rattrapage-fiches.ts instantane.json
+     npx tsx scripts/rattrapage-fiches.ts instantane.json          → les cinq listes
+     npx tsx scripts/rattrapage-fiches.ts instantane.json --sql    → les UPDATE à passer
+
+   `--sql` n'exécute rien : il IMPRIME le SQL, qui est relu puis passé à la main.
+   L'invariant du fichier tient donc toujours — aucun client, aucune connexion,
+   aucune écriture — et la consigne « rends le SQL exact avant de l'exécuter »
+   est honorée par construction.
 
    Le fichier attendu :
      { "patients": [...lignes patients...],
@@ -18,12 +24,14 @@
 import { readFileSync } from 'node:fs';
 import { rowToDevis, rowToFacture, rowToPaiement } from '../lib/mappers';
 import {
-  aPaye, CHAMPS_REMONTES, documentQuiFaitFoi, niveauEngagement, normaliser, planifierRemontee,
+  aPaye, CHAMPS_REMONTES, COLONNES_AUTORISEES, documentQuiFaitFoi, niveauEngagement, normaliser,
+  planifierRemontee,
 } from '../lib/fiche';
 import type { DocRecord } from '../lib/types';
 
 type Row = Record<string, any>;
 
+const enSql = process.argv.includes('--sql');
 const snap = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const patients: Row[] = snap.patients || [];
 const devis: DocRecord[] = (snap.devis || []).map(rowToDevis);
@@ -53,6 +61,11 @@ const sansSource: string[][] = [];
 /* Une valeur de stade inconnue gèlerait la fiche en silence : on la nomme. */
 const horsEchelle: string[][] = [];
 
+/* Ce que `--sql` émettra. `avant` est la valeur LUE dans l'instantané : elle
+   devient la condition de l'UPDATE, pas seulement une note. */
+interface Ecriture { id: string; colonne: string; valeur: string; avant: string; nom: string; doc: string }
+const ecritures: Ecriture[] = [];
+
 for (const p of patients) {
   const nom = `${p.prenom || ''} ${p.nom || ''}`.trim();
   const src = documentQuiFaitFoi(devisDe.get(String(p.id)) || [], facturesDe.get(String(p.id)) || []);
@@ -81,11 +94,67 @@ for (const p of patients) {
       aCompleter.push([nom, libelle, valeur, etiquette]);
     } else {
       aRemplir.push([nom, libelle, valeur, etiquette]);
+      ecritures.push({
+        id: String(p.id), colonne, valeur, avant: String(p[colonne] ?? ''), nom, doc: etiquette,
+      });
     }
   }
   for (const d of plan.divergences) {
     divergences.push([nom, d.libelle, d.valeurCrm, d.valeurDevis, etiquette]);
   }
+}
+
+/* ------------------------------------------------------------------ --sql
+
+   Un UPDATE par champ, et chacun porte SA garde. La garde ne vit pas seulement
+   dans ce script : elle part avec l'ordre. Deux conséquences voulues —
+   l'opération est rejouable sans risque, et un instantané périmé ne peut pas
+   écraser une saisie faite entre-temps.
+
+   La condition est la même pour les six colonnes : « la case contient toujours
+   exactement ce que le rapport y a lu ». Pour les cinq colonnes strictes cette
+   valeur est la chaîne vide, ce qui redit la règle « on n'écrit que si vide ».
+   Pour `stade`, c'est un verrou : si quelqu'un a fait avancer la fiche depuis
+   l'instantané, la ligne n'est pas touchée — le rattrapage ne peut donc jamais
+   faire RECULER un stade, même avec des données périmées. Le rang, lui, a été
+   calculé plus haut par `planifierRemontee` ; le SQL ne réimplémente aucune
+   règle, il ne fait que sceller ce qui a été observé. */
+const litteral = (v: string) => `'${v.replace(/'/g, "''")}'`;
+/* Les colonnes sont en camelCase et l'une d'elles s'appelle `procedure`, mot
+   réservé : sans guillemets doubles, Postgres lit `procedure` en minuscules et
+   refuse l'ordre. */
+const colonne = (v: string) => `"${v.replace(/"/g, '""')}"`;
+
+if (enSql) {
+  /* Ceinture et bretelles : le même contrôle que `lib/data.ts` fait avant
+     d'envoyer un PATCH. Une colonne hors liste ne doit pas pouvoir être émise,
+     même par accident de programmation. */
+  for (const e of ecritures) {
+    if (!COLONNES_AUTORISEES.has(e.colonne)) {
+      console.error(`REFUS : colonne « ${e.colonne} » hors liste blanche.`);
+      process.exit(1);
+    }
+  }
+  const lignes = [
+    '-- Rattrapage des fiches CRM — engendré par scripts/rattrapage-fiches.ts',
+    `-- ${ecritures.length} champ(s), ${new Set(ecritures.map((e) => e.id)).size} fiche(s).`,
+    '-- UPDATE uniquement. Aucun INSERT, aucun DELETE, aucun DDL.',
+    `-- Colonnes touchées : ${[...new Set(ecritures.map((e) => e.colonne))].sort().join(', ')}.`,
+    '-- Chaque ordre est gardé sur la valeur lue : rejouable, et sans effet si',
+    '-- la case a été renseignée entre-temps.',
+    '',
+  ];
+  let fiche = '';
+  for (const e of ecritures) {
+    if (e.nom !== fiche) { lignes.push(`-- ${e.nom} — ${e.doc}`); fiche = e.nom; }
+    lignes.push(
+      `update public.patients set ${colonne(e.colonne)} = ${litteral(e.valeur)}`
+      + ` where id = ${litteral(e.id)}`
+      + ` and coalesce(${colonne(e.colonne)}, '') = ${litteral(e.avant)};`,
+    );
+  }
+  console.log(lignes.join('\n'));
+  process.exit(0);
 }
 
 const table = (titre: string, entetes: string[], lignes: string[][]) => {

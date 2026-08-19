@@ -63,13 +63,20 @@ Autres invariants :
 - **Un modèle appliqué remplace, il ne concatène jamais.** Il remplit la première ligne vide
   de la section d'où la liste a été ouverte, sinon il en crée une neuve — libellé et détail
   dans deux champs distincts, pour un acte comme pour une option.
-- **Le devis nourrit la fiche patiente, il ne la corrige pas.** À l'acceptation d'un devis,
-  quatre champs — et quatre seulement — remontent vers `patients` : `dateOperation`,
-  `dateDevis`, `medecin`, `hopital`. ⚠ **On n'écrit que dans un champ vide** (chaîne vide :
+- **Le devis nourrit la fiche patiente, il ne la corrige pas.** Six champs — et six
+  seulement — remontent vers `patients` : `dateOperation`, `dateDevis`, `medecin`,
+  `budget`, `procedure` (au SINGULIER : c'est la colonne qu'affiche la carte patient ;
+  `procedures` au pluriel est un vestige) et `stade`. La remontée part dès que **l'un** des
+  deux signaux est vrai — un devis accepté **ou** un paiement — parce que le statut d'un
+  document ne suit pas la réalité : des factures en brouillon portent des paiements
+  encaissés. ⚠ `aPaye()` cherche par `patient_id` **et** par `facture_id` : 3 paiements sur
+  12 n'ont pas de `patient_id`. `procedure` et `stade` sont marqués `silencieux` dans
+  `CHAMPS_REMONTES` — un écart n'y est jamais signalé, un stade en avance étant le cours
+  normal des choses. ⚠ **On n'écrit que dans un champ vide** (chaîne vide :
   ces colonnes sont `text NOT NULL DEFAULT ''`, un test `is null` ne trouverait rien). Une
   valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
   divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.
-  `patients."procedure"` et `patients.stade` restent hors périmètre. Voir `lib/fiche.ts`.
+  `patients.procedures` (pluriel) et `hopital` restent hors périmètre. Voir `lib/fiche.ts`.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

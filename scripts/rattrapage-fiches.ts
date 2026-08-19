@@ -16,8 +16,10 @@
        "factures": [...lignes nw_factures...] } */
 
 import { readFileSync } from 'node:fs';
-import { rowToDevis, rowToFacture } from '../lib/mappers';
-import { CHAMPS_REMONTES, documentQuiFaitFoi, normaliser, planifierRemontee } from '../lib/fiche';
+import { rowToDevis, rowToFacture, rowToPaiement } from '../lib/mappers';
+import {
+  aPaye, CHAMPS_REMONTES, documentQuiFaitFoi, estEngage, normaliser, planifierRemontee,
+} from '../lib/fiche';
 import type { DocRecord } from '../lib/types';
 
 type Row = Record<string, any>;
@@ -26,6 +28,7 @@ const snap = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const patients: Row[] = snap.patients || [];
 const devis: DocRecord[] = (snap.devis || []).map(rowToDevis);
 const factures: DocRecord[] = (snap.factures || []).map(rowToFacture);
+const paiements = (snap.paiements || []).map(rowToPaiement);
 
 const parPatient = <T extends DocRecord>(list: T[]) => {
   const m = new Map<string, T[]>();
@@ -59,7 +62,15 @@ for (const p of patients) {
   }
   const doc = src.doc;
   const etiquette = `${src.type === 'facture' ? 'facture' : 'devis'} ${doc.numero || '(sans numéro)'}`;
-  const plan = planifierRemontee(doc, p as never);
+  /* Même OU que le flux : devis accepté ou paiement existant. `aPaye` cherche
+     aussi par facture, parce que 3 paiements sur 12 n'ont pas de patient_id. */
+  const sesDevis = devisDe.get(String(p.id)) || [];
+  const sesFactures = facturesDe.get(String(p.id)) || [];
+  const engage = estEngage(
+    sesDevis,
+    aPaye(paiements, String(p.id), sesFactures.map((f) => String(f.id || ''))),
+  );
+  const plan = planifierRemontee(doc, p as never, engage);
 
   for (const [colonne, valeur] of Object.entries(plan.aEcrire)) {
     const libelle = CHAMPS_REMONTES.find((c) => c.fiche === colonne)?.libelle || colonne;

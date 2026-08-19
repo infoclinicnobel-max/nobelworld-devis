@@ -8,7 +8,7 @@
    ⚠ Les colonnes de `patients` sont `text NOT NULL DEFAULT ''` : « vide »
    signifie chaîne vide, jamais NULL. Un test `is null` ne trouverait rien. */
 
-import type { DocRecord, Patient } from './types';
+import type { DocRecord, Paiement, Patient } from './types';
 
 /** Les QUATRE colonnes de `patients` que ce lot peut écrire. Aucune autre.
 
@@ -17,12 +17,43 @@ import type { DocRecord, Patient } from './types';
     « Avrasya Hospital » là où le document écrit « Avrasya Hastanesi —
     Istanbul, Türkiye ». Sept alertes sans désaccord réel useraient l'alerte
     avant qu'elle ne serve. */
-export const CHAMPS_REMONTES = [
+/* Le stade n'est pas recopié d'un document : il se déduit. La clé ci-dessous
+   n'existe sur aucun document — elle marque, dans la table, une valeur calculée
+   plutôt que lue. */
+export const CLE_STADE = '__stade';
+
+/** Vocabulaire EXISTANT du CRM. À ne pas élargir. */
+export const STADE_CONFIRME = 'Confirmé';
+export const STADE_DEVIS_ENVOYE = 'Devis envoyé';
+/* « Nouveau », « Post-opératoire » et « Clôturé ✓ » ne sont jamais écrits par
+   l'automatisme : ils restent à la main. Le ✓ de « Clôturé ✓ » fait partie de
+   la valeur — raison de plus pour ne pas la produire ici. */
+
+export interface ChampRemonte {
+  /** Clé lue sur le document, ou `__stade` pour une valeur calculée. */
+  devis: string;
+  /** Colonne de `patients` écrite. */
+  fiche: string;
+  libelle: string;
+  /* Un écart CRM/document alimente-t-il la liste des divergences ?
+
+     Non pour `procedure` et `stade`, et c'est délibéré : un stade en avance sur
+     son document est le cours normal des choses (une patiente opérée est
+     « Post-opératoire » alors que son devis dit « accepté »), et deux
+     vocabulaires pour une même intervention ne sont pas un désaccord. Les
+     signaler noierait les écarts de budget, qui, eux, veulent dire quelque
+     chose. La règle « on n'écrit que si le champ est vide » protège déjà. */
+  silencieux?: boolean;
+}
+
+export const CHAMPS_REMONTES: readonly ChampRemonte[] = [
   { devis: 'dateIntervention', fiche: 'dateOperation', libelle: "date d'opération" },
   { devis: 'date', fiche: 'dateDevis', libelle: 'date du devis' },
   { devis: 'chirurgien', fiche: 'medecin', libelle: 'chirurgien' },
   { devis: 'forfait', fiche: 'budget', libelle: 'budget' },
-] as const;
+  { devis: 'actes', fiche: 'procedure', libelle: 'intervention', silencieux: true },
+  { devis: CLE_STADE, fiche: 'stade', libelle: 'stade', silencieux: true },
+];
 
 /* `patients.budget` est du texte, en chiffres bruts : « 8500 », sans espace ni
    symbole — les 52 valeurs déjà en base vérifient toutes ^[0-9]+$. C'est le
@@ -33,9 +64,25 @@ const enChiffresBruts = (v: unknown) => {
   return Number.isFinite(n) && n > 0 ? String(n) : '';
 };
 
+/* `patients."procedure"` — au SINGULIER. C'est cette colonne que la carte de la
+   liste patients affiche ; `procedures` au pluriel est un vestige (vide 45 fois
+   sur 67, jamais de JSON, une seule valeur `[]`). Y écrire ne changerait rien à
+   l'écran, ce qui se solderait par « c'est toujours vide ».
+
+   On y met les libellés d'actes du document, MOT POUR MOT, joints par « · ».
+   Aucune reformulation, aucune mise en correspondance avec le catalogue, aucune
+   troncature : `catalogue_correspondances` sert aux tarifs, pas à réécrire ce
+   qu'un document remis à une patiente annonce. */
+const actesJoints = (v: unknown): string =>
+  Array.isArray(v)
+    ? v.map((a) => String((a as { acte?: unknown })?.acte ?? '').trim()).filter(Boolean).join(' · ')
+    : '';
+
 /** Valeur du document, mise au format de la colonne CRM visée. */
-function valeurPourFiche(champ: { devis: string; fiche: string }, doc: Record<string, unknown>): string {
+function valeurPourFiche(champ: ChampRemonte, doc: Record<string, unknown>, engage: boolean): string {
   if (champ.fiche === 'budget') return enChiffresBruts(doc[champ.devis]);
+  if (champ.fiche === 'procedure') return actesJoints(doc[champ.devis]);
+  if (champ.devis === CLE_STADE) return engage ? STADE_CONFIRME : STADE_DEVIS_ENVOYE;
   return String(doc[champ.devis] ?? '').trim();
 }
 
@@ -87,17 +134,21 @@ export function normaliser(v: unknown): string {
 /* Ce que le document écrirait, ce qu'il laisse tel quel, ce qu'il signale.
    UNE seule implémentation pour les devis ET les factures : les deux partagent
    la forme DocRecord, et deux copies divergeraient au premier changement. */
-export function planifierRemontee(devis: DocRecord, fiche: Patient): PlanRemontee {
+export function planifierRemontee(devis: DocRecord, fiche: Patient, engage = true): PlanRemontee {
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
 
   for (const champ of CHAMPS_REMONTES) {
-    const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>);
+    const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>, engage);
     const valeurCrm = String((fiche as unknown as Record<string, unknown>)[champ.fiche] ?? '');
     if (!valeurDevis) continue;                     // le devis n'a rien à proposer
     if (vide(valeurCrm)) { aEcrire[champ.fiche] = valeurDevis; continue; }
     if (normaliser(valeurCrm) === normaliser(valeurDevis)) { dejaConformes.push(champ.libelle); continue; }
+    /* Le champ CRM est occupé par autre chose — et il RESTE tel quel, quelle que
+       soit la suite : c'est la règle « on n'écrit que si vide » qui protège,
+       jamais un test de valeur. Seule change la façon d'en rendre compte. */
+    if (champ.silencieux) continue;
     divergences.push({
       libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis,
     });
@@ -159,4 +210,34 @@ export function documentQuiFaitFoi(
      dans un champ vide étant définitive, elle doit venir d'un document sûr. */
   const devisAcceptes = devis.filter((d) => remonteeAutomatique(d.statut)).sort(recent);
   return devisAcceptes.length ? { type: 'devis', doc: devisAcceptes[0] } : null;
+}
+
+/* ------------------------------------------------- « la patiente a payé »
+
+   Second terme du OU qui déclenche la remontée, et second terme du stade.
+   Le client l'a mesuré : le statut d'un document ne suit pas la réalité —
+   quatre factures sont en « brouillon » avec un paiement encaissé dessus, et
+   deux patientes ont payé sans avoir de devis accepté. Le paiement est donc un
+   signal d'engagement à part entière, pas un doublon du statut.
+
+   ⚠ Mesuré aussi : 3 paiements sur 12 n'ont PAS de `patient_id`, et ne sont
+   rattachables que par `facture_id`. Chercher sur le seul `patient_id` en
+   manquerait le quart — exactement le genre d'oubli qui se solde par
+   « c'est toujours vide ». On cherche donc par les deux voies. */
+export function aPaye(paiements: Paiement[], patientId: string, idsFactures: string[]): boolean {
+  const id = String(patientId || '').trim();
+  const factures = new Set(idsFactures.filter(Boolean));
+  return (paiements || []).some((p) => {
+    if (!(Number(p.montant) > 0)) return false;
+    if (id && String(p.patientId || '').trim() === id) return true;
+    return !!p.refId && factures.has(String(p.refId));
+  });
+}
+
+/* Le document engage-t-il la patiente ? C'est LE point de décision, partagé par
+   le flux devis, le flux facture et le rattrapage. Un brouillon sans paiement
+   n'engage personne ; la première écriture dans un champ vide étant définitive,
+   elle doit venir d'un document sûr. */
+export function estEngage(devisDeLaPatiente: DocRecord[], paye: boolean): boolean {
+  return paye || devisDeLaPatiente.some((d) => remonteeAutomatique(d.statut));
 }

@@ -19,7 +19,6 @@ import { CHAMPS_REMONTES } from '@/lib/fiche';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
-import { remonteeAutomatique } from '@/lib/fiche';
 
 /* =========================================================================
    DEVIS
@@ -560,16 +559,20 @@ export function DevisEditor({
       /* Remontée vers la fiche patiente. Elle ne peut jamais faire échouer
          l'enregistrement du devis : le document prime, la recopie est un
          confort. Une erreur ici se signale et s'arrête là. */
-      if (forcer || remonteeAutomatique(saved.statut)) {
+      /* On appelle TOUJOURS : c'est remonterVersFiche qui tranche, parce que le
+         second terme du OU — « un paiement existe » — demande une lecture, et
+         parce qu'une règle partagée par les trois chemins ne doit exister qu'une
+         fois. `forcer` porte le bouton manuel, rien d'autre. */
+      {
         try {
-          const r = await remonterVersFiche(saved);
+          const r = await remonterVersFiche(saved, 'devis', forcer);
           if (r.statut === 'ecrit') {
             const noms = Object.keys(r.ecrits)
               .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c)
               .join(', ');
             toast(`Fiche de ${r.patient} complétée : ${noms}`);
           } else if (r.statut === 'rien-a-ecrire' && !r.divergences.length) {
-            if (forcer) toast('Fiche patiente déjà à jour, rien à reporter.');
+            if (forcer) toast(r.raison ? 'Rien à reporter — ' + r.raison + '.' : 'Fiche patiente déjà à jour, rien à reporter.');
           }
           if (r.divergences.length || r.statut === 'fiche-introuvable') {
             onRapportFiche?.(r, saved.numero || '');

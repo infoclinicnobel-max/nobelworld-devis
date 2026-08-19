@@ -17,7 +17,9 @@ import {
 import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } from './types';
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
-import { COLONNES_AUTORISEES, factureEstVivante, planifierRemontee, type Divergence } from './fiche';
+import {
+  aPaye, COLONNES_AUTORISEES, estEngage, factureEstVivante, planifierRemontee, type Divergence,
+} from './fiche';
 import { ROLES_SANS_ACCES } from './perms';
 
 /** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite. */
@@ -209,6 +211,8 @@ export async function supprimer(collection: Collection, id: string): Promise<voi
 
 export interface ResultatRemontee {
   statut: 'ecrit' | 'rien-a-ecrire' | 'fiche-introuvable' | 'sans-fiche';
+  /** Pourquoi rien n'a été écrit, quand c'est le cas. Sert aux messages. */
+  raison?: string;
   /** Nom de la patiente, quand la fiche a été retrouvée. */
   patient?: string;
   ecrits: Record<string, string>;
@@ -229,6 +233,7 @@ export interface ResultatRemontee {
 export async function remonterVersFiche(
   devis: DocRecord,
   source: 'devis' | 'facture' = 'devis',
+  forcer = false,
 ): Promise<ResultatRemontee> {
   const vide: ResultatRemontee = { statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [] };
   const id = String(devis.patientId || '').trim();
@@ -236,30 +241,62 @@ export async function remonterVersFiche(
 
   const sb = supabase();
   const colonnes = ['id', 'prenom', 'nom', ...COLONNES_AUTORISEES].join(',');
-  const { data: fiche, error } = await sb.from('patients').select(colonnes).eq('id', id).maybeSingle();
-  if (error) throw new Error('Fiche patiente illisible : ' + error.message);
-  if (!fiche) return { ...vide, statut: 'fiche-introuvable' };
+  const [ficheR, devisR, facturesR, paiementsR] = await Promise.all([
+    sb.from('patients').select(colonnes).eq('id', id).maybeSingle(),
+    sb.from('nw_devis').select('*').eq('patient_id', id),
+    sb.from('nw_factures').select('*').eq('patient_id', id),
+    sb.from('nw_paiements').select('*'),
+  ]);
+  if (ficheR.error) throw new Error('Fiche patiente illisible : ' + ficheR.error.message);
+  if (!ficheR.data) return { ...vide, statut: 'fiche-introuvable' };
+
+  const devisDeLaPatiente = (devisR.data || []).map(rowToDevis);
+  const facturesDeLaPatiente = (facturesR.data || []).map(rowToFacture);
 
   /* Hiérarchie : la facture vivante l'emporte, quelle que soit la date. Un devis
      rouvert après la facture qui en est née ne reprend jamais la main — sinon le
-     prix d'AVANT la remise réécrase le prix final. Même règle que le rattrapage,
-     via factureEstVivante() de lib/fiche.ts. */
-  if (source === 'devis') {
-    const { data: fv } = await sb.from('nw_factures').select('statut').eq('patient_id', id);
-    if ((fv || []).some((x) => factureEstVivante((x as { statut?: unknown }).statut))) {
-      return { statut: 'rien-a-ecrire', ecrits: {}, patient: '', divergences: [], dejaConformes: [] };
-    }
+     prix d'AVANT la remise réécrase le prix final. */
+  if (source === 'devis' && facturesDeLaPatiente.some((f) => factureEstVivante(f.statut))) {
+    return {
+      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [],
+      raison: 'une facture vivante existe : c\'est elle qui parle au CRM',
+    };
   }
 
-  const f = fiche as unknown as Record<string, unknown>;
+  /* ---- Le déclenchement, en OU, et il vit ICI et nulle part ailleurs ----
+
+     Deux signaux, l'un ou l'autre suffit :
+       · un devis de la patiente est « accepté » ;
+       · un paiement existe.
+
+     Mesuré par le client : quatre factures sont en « brouillon » avec un
+     paiement encaissé dessus, et deux patientes ont payé sans devis accepté.
+     Le statut d'un document ne suit pas la réalité ; le OU couvre les deux
+     trous. La décision est descendue de l'écran vers cette couche parce que le
+     second terme demande une lecture — et parce qu'une règle partagée par le
+     flux devis, le flux facture et le rattrapage ne doit exister qu'une fois. */
+  const paye = aPaye(
+    (paiementsR.data || []).map(rowToPaiement),
+    id,
+    facturesDeLaPatiente.map((f) => String(f.id || '')),
+  );
+  const engage = estEngage(devisDeLaPatiente, paye);
+  if (!engage && !forcer) {
+    return {
+      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [],
+      raison: 'aucun devis accepté et aucun paiement : le document n\'engage encore personne',
+    };
+  }
+
+  const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
-  const plan = planifierRemontee(devis, f as never);
+  const plan = planifierRemontee(devis, f as never, engage);
   const base = { patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes };
 
   const colonnesEcrites = Object.keys(plan.aEcrire);
   if (!colonnesEcrites.length) return { statut: 'rien-a-ecrire', ecrits: {}, ...base };
 
-  /* Ceinture et bretelles : une colonne hors des quatre autorisées ne part pas. */
+  /* Ceinture et bretelles : une colonne hors de la liste blanche ne part pas. */
   const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
   if (interdite) {
     throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);

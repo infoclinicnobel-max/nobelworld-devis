@@ -8,8 +8,8 @@
    Usage : npx tsx scripts/recette-fiche-champs.ts */
 
 import {
-  aPaye, CLE_STADE, CHAMPS_REMONTES, estEngage, planifierRemontee,
-  STADE_CONFIRME, STADE_DEVIS_ENVOYE,
+  aPaye, CLE_STADE, CHAMPS_REMONTES, ECHELLE_STADE, niveauEngagement, planifierRemontee,
+  rangStade, STADE_CONFIRME, STADE_DEVIS_ENVOYE,
 } from '../lib/fiche';
 import type { DocRecord, Paiement, Patient } from '../lib/types';
 
@@ -33,7 +33,7 @@ const doc: DocRecord = {
 
 console.log('\n=== 1. Fiche vide + document engageant → les six colonnes ===');
 {
-  const p = planifierRemontee(doc, fiche(), true);
+  const p = planifierRemontee(doc, fiche(), { engagement: 'engage' });
   const e = p.aEcrire;
   v('dateOperation', e.dateOperation === '2026-12-07', e.dateOperation);
   v('dateDevis', e.dateDevis === '2026-04-18', e.dateDevis);
@@ -49,7 +49,7 @@ console.log('\n=== 1. Fiche vide + document engageant → les six colonnes ===')
 
 console.log('\n=== 2. LE CAS QUI COMPTE — fiche « Post-opératoire » ===');
 {
-  const p = planifierRemontee(doc, fiche({ stade: 'Post-opératoire' }), true);
+  const p = planifierRemontee(doc, fiche({ stade: 'Post-opératoire' }), { engagement: 'engage' });
   v('stade N\'EST PAS dans les colonnes à écrire', !('stade' in p.aEcrire),
     'stade' in p.aEcrire ? 'RECULÉ à « ' + p.aEcrire.stade + ' »' : 'Post-opératoire conservé');
   v('et la divergence reste silencieuse', !p.divergences.some((d) => d.colonne === 'stade'));
@@ -58,11 +58,11 @@ console.log('\n=== 2. LE CAS QUI COMPTE — fiche « Post-opératoire » ===');
 console.log('\n=== 3. Silence de procedure et stade, bavardage des quatre autres ===');
 {
   const p = planifierRemontee(doc, fiche({
-    procedure: 'BBL / Lipofilling fessier', stade: 'Nouveau', budget: '9999', medecin: 'Dr Orkun Uyanik',
-  }), true);
+    procedure: 'BBL / Lipofilling fessier', stade: 'Clôturé ✓', budget: '9999', medecin: 'Dr Orkun Uyanik',
+  }), { engagement: 'engage' });
   v('procedure occupée : ni écrite, ni signalée',
     !('procedure' in p.aEcrire) && !p.divergences.some((d) => d.colonne === 'procedure'));
-  v('stade occupé : ni écrit, ni signalé',
+  v('stade plus avancé : ni écrit, ni signalé',
     !('stade' in p.aEcrire) && !p.divergences.some((d) => d.colonne === 'stade'));
   v('budget divergent : signalé', p.divergences.some((d) => d.colonne === 'budget'));
   v('medecin divergent : signalé', p.divergences.some((d) => d.colonne === 'medecin'));
@@ -71,8 +71,10 @@ console.log('\n=== 3. Silence de procedure et stade, bavardage des quatre autres
 
 console.log('\n=== 4. Le stade quand rien n\'engage (bouton manuel seul) ===');
 {
-  const p = planifierRemontee(doc, fiche(), false);
+  const p = planifierRemontee(doc, fiche(), { engagement: 'envoye' });
   v('stade = Devis envoyé', p.aEcrire.stade === STADE_DEVIS_ENVOYE, p.aEcrire.stade);
+  v('et RIEN d\'autre : un devis envoyé n\'écrit que le stade',
+    Object.keys(p.aEcrire).length === 1, Object.keys(p.aEcrire).join(', '));
 }
 
 console.log('\n=== 5. Le OU, et le trou des paiements sans patient_id ===');
@@ -84,10 +86,11 @@ console.log('\n=== 5. Le OU, et le trou des paiements sans patient_id ===');
     aPaye([pai({ refId: 'fac_9' })], 'p1', ['fac_9']));
   v('paiement d\'une AUTRE patiente ignoré', !aPaye([pai({ patientId: 'p2' })], 'p1', []));
   v('montant nul ignoré', !aPaye([pai({ patientId: 'p1', montant: 0 })], 'p1', []));
-  v('devis accepté sans paiement → engagé', estEngage([{ statut: 'accepte' } as DocRecord], false));
-  v('paiement sans devis accepté → engagé', estEngage([{ statut: 'envoye' } as DocRecord], true));
-  v('devis envoyé sans paiement → PAS engagé', !estEngage([{ statut: 'envoye' } as DocRecord], false));
-  v('brouillon sans paiement → PAS engagé', !estEngage([{ statut: 'brouillon' } as DocRecord], false));
+  const niv = (statut: string, paye: boolean) => niveauEngagement([{ statut } as DocRecord], paye);
+  v('devis accepté sans paiement → engage', niv('accepte', false) === 'engage', niv('accepte', false));
+  v('paiement sans devis accepté → engage', niv('envoye', true) === 'engage', niv('envoye', true));
+  v('devis envoyé sans paiement → envoye', niv('envoye', false) === 'envoye', niv('envoye', false));
+  v('brouillon sans paiement → aucun', niv('brouillon', false) === 'aucun', niv('brouillon', false));
 }
 
 console.log('\n=== 6. La table est bien la source unique ===');
@@ -98,6 +101,53 @@ console.log('\n=== 6. La table est bien la source unique ===');
   v('le stade est marqué comme calculé', CHAMPS_REMONTES.some((c) => c.devis === CLE_STADE));
   v('hopital et procedures restent dehors',
     !CHAMPS_REMONTES.some((c) => c.fiche === 'hopital' || c.fiche === 'procedures'));
+}
+
+console.log('\n=== 7. L\'échelle du stade, aux bornes ===');
+{
+  v('vide → -1', rangStade('') === -1);
+  ECHELLE_STADE.forEach((e, i) => v(`« ${e} » → ${i}`, rangStade(e) === i, String(rangStade(e))));
+  v('« Clôturé » sans le ✓ → reconnu rang 4', rangStade('Clôturé') === 4, String(rangStade('Clôturé')));
+  v('« confirmé » en minuscules → rang 2', rangStade('confirmé') === 2, String(rangStade('confirmé')));
+  v('« En cours » → hors échelle (null)', rangStade('En cours') === null, String(rangStade('En cours')));
+}
+
+console.log('\n=== 8. LA MORSURE 1 — le stade ne recule jamais ===');
+{
+  const p = planifierRemontee(doc, fiche({ stade: 'Post-opératoire' }), { engagement: 'engage' });
+  v('Post-opératoire (3) face à Confirmé (2) : pas écrit', !('stade' in p.aEcrire),
+    'stade' in p.aEcrire ? 'RECULÉ à « ' + p.aEcrire.stade + ' »' : 'conservé');
+  v('et la raison est dite', p.laisses.some((l) => l.libelle === 'stade' && /déjà à/.test(l.pourquoi)),
+    p.laisses.map((l) => l.pourquoi).join(' | ') || 'aucune');
+  const q = planifierRemontee(doc, fiche({ stade: 'Clôturé ✓' }), { engagement: 'engage' });
+  v('Clôturé ✓ (4) : pas écrit non plus', !('stade' in q.aEcrire));
+}
+
+console.log('\n=== 9. LA MORSURE 2 — mais il AVANCE quand le rang monte ===');
+{
+  const p = planifierRemontee(doc, fiche({ stade: 'Devis envoyé' }), { engagement: 'engage' });
+  v('Devis envoyé (1) → Confirmé (2) : ÉCRIT', p.aEcrire.stade === STADE_CONFIRME,
+    p.aEcrire.stade ? '« ' + p.aEcrire.stade + ' »' : 'BLOQUÉ — la fiche ne peut plus avancer');
+  const q = planifierRemontee(doc, fiche({ stade: 'Nouveau' }), { engagement: 'engage' });
+  v('Nouveau (0) → Confirmé (2) : ÉCRIT', q.aEcrire.stade === STADE_CONFIRME, q.aEcrire.stade);
+  const w = planifierRemontee(doc, fiche({ stade: 'Confirmé' }), { engagement: 'engage' });
+  v('Confirmé (2) face à Confirmé (2) : pas de réécriture', !('stade' in w.aEcrire));
+}
+
+console.log('\n=== 10. Hors échelle : fiche intacte, ET portée au rapport ===');
+{
+  const p = planifierRemontee(doc, fiche({ stade: 'En cours' }), { engagement: 'engage' });
+  v('rien n\'est écrit dans stade', !('stade' in p.aEcrire));
+  v('la valeur est remontée pour le rapport', p.stadeHorsEchelle === 'En cours', String(p.stadeHorsEchelle));
+  v('et la raison est dite', p.laisses.some((l) => /hors de l/.test(l.pourquoi)));
+}
+
+console.log('\n=== 11. Le bouton manuel : la donnée, jamais l\'avancement ===');
+{
+  const p = planifierRemontee(doc, fiche(), { engagement: 'aucun', forcerDonnees: true });
+  v('les cinq colonnes de données sont écrites', Object.keys(p.aEcrire).length === 5,
+    Object.keys(p.aEcrire).join(', '));
+  v('le stade n\'est PAS écrit sur un brouillon', !('stade' in p.aEcrire));
 }
 
 const ko = r.filter(([, ok]) => !ok);

@@ -77,7 +77,8 @@ export function DevisView() {
       if (r.statut === 'ecrit') {
         const noms = Object.keys(r.ecrits)
           .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c).join(', ');
-        toast(`Fiche de ${r.patient} complétée : ${noms}`);
+        const laisses = r.laisses.map((l) => `${l.libelle} inchangé : ${l.pourquoi}`);
+        toast([`Fiche de ${r.patient} complétée : ${noms}`, ...laisses].join(' · '));
       }
       if (r.divergences.length || r.statut === 'fiche-introuvable') setRapport({ r, numero });
     } catch (e) {
@@ -566,13 +567,19 @@ export function DevisEditor({
       {
         try {
           const r = await remonterVersFiche(saved, 'devis', forcer);
+          /* Le message dit les DEUX moitiés : ce qui est écrit, et ce qui est
+             volontairement laissé, avec la raison. Sans la seconde, l'assistante
+             clique, voit la date arriver, voit le stade rester en place, et
+             conclut que c'est cassé — la plainte même qui a lancé ces lots. */
+          const ecrits = Object.keys(r.ecrits)
+            .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c);
+          const laisses = r.laisses.map((l) => `${l.libelle} inchangé : ${l.pourquoi}`);
           if (r.statut === 'ecrit') {
-            const noms = Object.keys(r.ecrits)
-              .map((c) => CHAMPS_REMONTES.find((x) => x.fiche === c)?.libelle || c)
-              .join(', ');
-            toast(`Fiche de ${r.patient} complétée : ${noms}`);
-          } else if (r.statut === 'rien-a-ecrire' && !r.divergences.length) {
-            if (forcer) toast(r.raison ? 'Rien à reporter — ' + r.raison + '.' : 'Fiche patiente déjà à jour, rien à reporter.');
+            const parts = [`${ecrits.length} champ${ecrits.length > 1 ? 's' : ''} écrit${ecrits.length > 1 ? 's' : ''} — ${ecrits.join(', ')}`, ...laisses];
+            toast(`Fiche de ${r.patient} : ${parts.join(' · ')}`);
+          } else if (r.statut === 'rien-a-ecrire' && !r.divergences.length && forcer) {
+            const parts = laisses.length ? laisses : [r.raison || 'fiche déjà à jour'];
+            toast(`Rien à reporter — ${parts.join(' · ')}.`);
           }
           if (r.divergences.length || r.statut === 'fiche-introuvable') {
             onRapportFiche?.(r, saved.numero || '');

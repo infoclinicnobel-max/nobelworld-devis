@@ -25,9 +25,45 @@ export const CLE_STADE = '__stade';
 /** Vocabulaire EXISTANT du CRM. À ne pas élargir. */
 export const STADE_CONFIRME = 'Confirmé';
 export const STADE_DEVIS_ENVOYE = 'Devis envoyé';
-/* « Nouveau », « Post-opératoire » et « Clôturé ✓ » ne sont jamais écrits par
-   l'automatisme : ils restent à la main. Le ✓ de « Clôturé ✓ » fait partie de
-   la valeur — raison de plus pour ne pas la produire ici. */
+/* « Nouveau », « Post-opératoire » et « Clôturé ✓ » ne sont jamais PRODUITS par
+   l'automatisme : ils restent à la main. Mais ils sont RECONNUS, parce qu'il
+   faut savoir qu'une fiche est déjà plus avancée que ce qu'on propose. */
+
+/* ---- `stade` est la SEULE colonne à règle ordonnée ----
+
+   Les cinq autres colonnes gardent la règle stricte : on n'écrit que si le
+   champ est vide. Pour `stade`, cette règle produirait l'inverse du but : une
+   fiche passée à « Devis envoyé » à l'envoi du devis ne pourrait plus jamais
+   avancer à « Confirmé » à son acceptation, la case n'étant plus vide. Toutes
+   les fiches se figeraient au premier étage.
+
+   On écrit donc si et seulement si le rang proposé est STRICTEMENT SUPÉRIEUR
+   au rang actuel. Un stade ne peut que monter, jamais reculer. */
+export const ECHELLE_STADE = [
+  'Nouveau',            // 0
+  STADE_DEVIS_ENVOYE,   // 1
+  STADE_CONFIRME,       // 2
+  'Post-opératoire',    // 3
+  'Clôturé ✓',          // 4
+] as const;
+
+/** Rang du stade : -1 si vide · 0..4 · **null si la valeur est hors échelle**.
+
+    Hors échelle, on ne touche à rien — et on le PORTE AU RAPPORT : une fiche mal
+    orthographiée se gèlerait sinon en silence, et personne ne l'apprendrait.
+
+    La reconnaissance passe par `normaliser()`, la même fonction que pour le nom
+    du chirurgien : un seul principe, comparer normalisé et écrire non
+    normalisé. « Clôturé » privé de son ✓ est ainsi reconnu comme rang 4, et la
+    fiche reste protégée. Mesuré : 68 fiches, aucune hors échelle aujourd'hui —
+    cette règle protège l'avenir. */
+export function rangStade(v: unknown): number | null {
+  const brut = String(v ?? '').trim();
+  if (!brut) return -1;
+  const cle = normaliser(brut);
+  const i = ECHELLE_STADE.findIndex((e) => normaliser(e) === cle);
+  return i >= 0 ? i : null;
+}
 
 export interface ChampRemonte {
   /** Clé lue sur le document, ou `__stade` pour une valeur calculée. */
@@ -79,10 +115,14 @@ const actesJoints = (v: unknown): string =>
     : '';
 
 /** Valeur du document, mise au format de la colonne CRM visée. */
-function valeurPourFiche(champ: ChampRemonte, doc: Record<string, unknown>, engage: boolean): string {
+function valeurPourFiche(champ: ChampRemonte, doc: Record<string, unknown>, e: Engagement): string {
   if (champ.fiche === 'budget') return enChiffresBruts(doc[champ.devis]);
   if (champ.fiche === 'procedure') return actesJoints(doc[champ.devis]);
-  if (champ.devis === CLE_STADE) return engage ? STADE_CONFIRME : STADE_DEVIS_ENVOYE;
+  if (champ.devis === CLE_STADE) {
+    if (e === 'engage') return STADE_CONFIRME;
+    if (e === 'envoye') return STADE_DEVIS_ENVOYE;
+    return '';                                    // rien à proposer
+  }
   return String(doc[champ.devis] ?? '').trim();
 }
 
@@ -112,6 +152,22 @@ export interface PlanRemontee {
   divergences: Divergence[];
   /** Champs déjà renseignés à l'identique : ni écriture, ni alerte. */
   dejaConformes: string[];
+  /* Ce qu'on avait à proposer et qu'on n'a PAS écrit, avec la raison — destiné
+     à être DIT. Sans ce retour, l'assistante clique, la date apparaît, la
+     pastille reste grise, et elle conclut que c'est cassé. */
+  laisses: { libelle: string; pourquoi: string }[];
+  /** Valeur de stade hors échelle rencontrée : à porter au rapport. */
+  stadeHorsEchelle?: string;
+}
+
+/* Trois niveaux, pas deux. Un devis ENVOYÉ parle au CRM, mais pour dire une
+   seule chose : où en est le dossier. Il n'écrit donc que le stade. */
+export type Engagement = 'aucun' | 'envoye' | 'engage';
+
+export function niveauEngagement(devisDeLaPatiente: DocRecord[], paye: boolean): Engagement {
+  if (paye || devisDeLaPatiente.some((d) => remonteeAutomatique(d.statut))) return 'engage';
+  if (devisDeLaPatiente.some((d) => String(d.statut || '') === 'envoye')) return 'envoye';
+  return 'aucun';
 }
 
 const vide = (v: unknown) => String(v ?? '').trim() === '';
@@ -134,27 +190,72 @@ export function normaliser(v: unknown): string {
 /* Ce que le document écrirait, ce qu'il laisse tel quel, ce qu'il signale.
    UNE seule implémentation pour les devis ET les factures : les deux partagent
    la forme DocRecord, et deux copies divergeraient au premier changement. */
-export function planifierRemontee(devis: DocRecord, fiche: Patient, engage = true): PlanRemontee {
+export function planifierRemontee(
+  devis: DocRecord,
+  fiche: Patient,
+  opts: { engagement: Engagement; forcerDonnees?: boolean } = { engagement: 'engage' },
+): PlanRemontee {
+  const { engagement, forcerDonnees = false } = opts;
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
+  const laisses: { libelle: string; pourquoi: string }[] = [];
+  let stadeHorsEchelle: string | undefined;
 
   for (const champ of CHAMPS_REMONTES) {
-    const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>, engage);
+    const estStade = champ.devis === CLE_STADE;
+
+    /* Un devis ENVOYÉ n'écrit que le stade. Les cinq colonnes de données
+       attendent l'engagement — ou un clic humain, qui force la DONNÉE mais
+       jamais l'avancement du processus. */
+    if (!estStade && engagement !== 'engage' && !forcerDonnees) continue;
+
+    const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>, engagement);
     const valeurCrm = String((fiche as unknown as Record<string, unknown>)[champ.fiche] ?? '');
-    if (!valeurDevis) continue;                     // le devis n'a rien à proposer
+
+    /* Le stade n'a rien à proposer quand rien n'engage — mais il faut le DIRE.
+       C'est le cas du bouton manuel sur un brouillon : cinq champs arrivent, le
+       stade ne bouge pas, et sans cette phrase l'utilisateur croit à une panne. */
+    if (estStade && !valeurDevis) {
+      if (forcerDonnees) {
+        laisses.push({ libelle: champ.libelle, pourquoi: "le devis est encore un brouillon" });
+      }
+      continue;
+    }
+    if (!valeurDevis) continue;                     // rien à proposer
+
+    if (estStade) {
+      /* LA règle ordonnée, et la seule du fichier. Un stade ne monte que d'un
+         rang strictement supérieur ; il ne recule jamais. */
+      const actuel = rangStade(valeurCrm);
+      const propose = rangStade(valeurDevis);
+      if (actuel === null) {
+        // Valeur inconnue de l'échelle : on ne touche à rien, et on le dit.
+        stadeHorsEchelle = valeurCrm;
+        laisses.push({ libelle: champ.libelle, pourquoi: `valeur « ${valeurCrm} » hors de l'échelle connue` });
+        continue;
+      }
+      if (propose === null || propose <= actuel) {
+        if (propose !== null && propose === actuel) dejaConformes.push(champ.libelle);
+        else laisses.push({ libelle: champ.libelle, pourquoi: `la fiche est déjà à « ${valeurCrm} »` });
+        continue;
+      }
+      aEcrire[champ.fiche] = valeurDevis;
+      continue;
+    }
+
+    /* Les cinq autres : règle stricte, inchangée depuis le premier lot. */
     if (vide(valeurCrm)) { aEcrire[champ.fiche] = valeurDevis; continue; }
     if (normaliser(valeurCrm) === normaliser(valeurDevis)) { dejaConformes.push(champ.libelle); continue; }
     /* Le champ CRM est occupé par autre chose — et il RESTE tel quel, quelle que
        soit la suite : c'est la règle « on n'écrit que si vide » qui protège,
        jamais un test de valeur. Seule change la façon d'en rendre compte. */
     if (champ.silencieux) continue;
-    divergences.push({
-      libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis,
-    });
+    divergences.push({ libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis });
   }
-  return { aEcrire, divergences, dejaConformes };
+  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle };
 }
+
 
 /* ---------------------------------------------------------------- moment
 
@@ -234,10 +335,4 @@ export function aPaye(paiements: Paiement[], patientId: string, idsFactures: str
   });
 }
 
-/* Le document engage-t-il la patiente ? C'est LE point de décision, partagé par
-   le flux devis, le flux facture et le rattrapage. Un brouillon sans paiement
-   n'engage personne ; la première écriture dans un champ vide étant définitive,
-   elle doit venir d'un document sûr. */
-export function estEngage(devisDeLaPatiente: DocRecord[], paye: boolean): boolean {
-  return paye || devisDeLaPatiente.some((d) => remonteeAutomatique(d.statut));
-}
+

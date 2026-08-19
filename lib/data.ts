@@ -18,7 +18,8 @@ import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } fro
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
 import {
-  aPaye, COLONNES_AUTORISEES, estEngage, factureEstVivante, planifierRemontee, type Divergence,
+  aPaye, COLONNES_AUTORISEES, factureEstVivante, niveauEngagement, planifierRemontee,
+  type Divergence,
 } from './fiche';
 import { ROLES_SANS_ACCES } from './perms';
 
@@ -213,6 +214,8 @@ export interface ResultatRemontee {
   statut: 'ecrit' | 'rien-a-ecrire' | 'fiche-introuvable' | 'sans-fiche';
   /** Pourquoi rien n'a été écrit, quand c'est le cas. Sert aux messages. */
   raison?: string;
+  /** Ce qui a été volontairement laissé, avec la raison — à DIRE, pas à taire. */
+  laisses: { libelle: string; pourquoi: string }[];
   /** Nom de la patiente, quand la fiche a été retrouvée. */
   patient?: string;
   ecrits: Record<string, string>;
@@ -235,7 +238,9 @@ export async function remonterVersFiche(
   source: 'devis' | 'facture' = 'devis',
   forcer = false,
 ): Promise<ResultatRemontee> {
-  const vide: ResultatRemontee = { statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [] };
+  const vide: ResultatRemontee = {
+    statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
+  };
   const id = String(devis.patientId || '').trim();
   if (!id) return vide;
 
@@ -258,7 +263,7 @@ export async function remonterVersFiche(
      prix d'AVANT la remise réécrase le prix final. */
   if (source === 'devis' && facturesDeLaPatiente.some((f) => factureEstVivante(f.statut))) {
     return {
-      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [],
+      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
       raison: 'une facture vivante existe : c\'est elle qui parle au CRM',
     };
   }
@@ -280,18 +285,22 @@ export async function remonterVersFiche(
     id,
     facturesDeLaPatiente.map((f) => String(f.id || '')),
   );
-  const engage = estEngage(devisDeLaPatiente, paye);
-  if (!engage && !forcer) {
+  /* Trois niveaux : un devis ENVOYÉ écrit le stade et rien d'autre ; un devis
+     accepté ou un paiement écrit les six colonnes ; sinon rien. */
+  const engagement = niveauEngagement(devisDeLaPatiente, paye);
+  if (engagement === 'aucun' && !forcer) {
     return {
-      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [],
-      raison: 'aucun devis accepté et aucun paiement : le document n\'engage encore personne',
+      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
+      raison: 'aucun devis envoyé ou accepté, et aucun paiement : le document n\'engage encore personne',
     };
   }
 
   const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
-  const plan = planifierRemontee(devis, f as never, engage);
-  const base = { patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes };
+  const plan = planifierRemontee(devis, f as never, { engagement, forcerDonnees: forcer });
+  const base = {
+    patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes, laisses: plan.laisses,
+  };
 
   const colonnesEcrites = Object.keys(plan.aEcrire);
   if (!colonnesEcrites.length) return { statut: 'rien-a-ecrire', ecrits: {}, ...base };

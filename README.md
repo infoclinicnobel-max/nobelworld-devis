@@ -72,7 +72,16 @@ Autres invariants :
   encaissés. ⚠ `aPaye()` cherche par `patient_id` **et** par `facture_id` : 3 paiements sur
   12 n'ont pas de `patient_id`. `procedure` et `stade` sont marqués `silencieux` dans
   `CHAMPS_REMONTES` — un écart n'y est jamais signalé, un stade en avance étant le cours
-  normal des choses. ⚠ **On n'écrit que dans un champ vide** (chaîne vide :
+  normal des choses.
+- **`stade` est la SEULE colonne à règle ordonnée**, et c'est une nécessité, pas un confort :
+  avec « on n'écrit que si vide », une fiche passée à « Devis envoyé » à l'envoi ne pourrait
+  plus jamais avancer à « Confirmé » — toutes les fiches se figeraient au premier étage. On
+  écrit donc si et seulement si le rang proposé est **strictement supérieur** au rang actuel
+  (`vide -1 < Nouveau 0 < Devis envoyé 1 < Confirmé 2 < Post-opératoire 3 < Clôturé ✓ 4`).
+  Une valeur hors échelle laisse la fiche intacte **et** apparaît au rapport : une fiche mal
+  orthographiée se gèlerait sinon en silence. Un devis `envoye` n'écrit **que** le stade ;
+  le bouton manuel force les cinq colonnes de données mais jamais l'avancement — **et il dit
+  les deux moitiés**, sans quoi l'utilisateur croit à une panne. ⚠ **On n'écrit que dans un champ vide** (chaîne vide :
   ces colonnes sont `text NOT NULL DEFAULT ''`, un test `is null` ne trouverait rien). Une
   valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
   divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.

@@ -18,7 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { rowToDevis, rowToFacture, rowToPaiement } from '../lib/mappers';
 import {
-  aPaye, CHAMPS_REMONTES, documentQuiFaitFoi, estEngage, normaliser, planifierRemontee,
+  aPaye, CHAMPS_REMONTES, documentQuiFaitFoi, niveauEngagement, normaliser, planifierRemontee,
 } from '../lib/fiche';
 import type { DocRecord } from '../lib/types';
 
@@ -50,6 +50,8 @@ const aRemplir: string[][] = [];
 const divergences: string[][] = [];
 const aCompleter: string[][] = [];
 const sansSource: string[][] = [];
+/* Une valeur de stade inconnue gèlerait la fiche en silence : on la nomme. */
+const horsEchelle: string[][] = [];
 
 for (const p of patients) {
   const nom = `${p.prenom || ''} ${p.nom || ''}`.trim();
@@ -66,11 +68,12 @@ for (const p of patients) {
      aussi par facture, parce que 3 paiements sur 12 n'ont pas de patient_id. */
   const sesDevis = devisDe.get(String(p.id)) || [];
   const sesFactures = facturesDe.get(String(p.id)) || [];
-  const engage = estEngage(
+  const engagement = niveauEngagement(
     sesDevis,
     aPaye(paiements, String(p.id), sesFactures.map((f) => String(f.id || ''))),
   );
-  const plan = planifierRemontee(doc, p as never, engage);
+  const plan = planifierRemontee(doc, p as never, { engagement });
+  if (plan.stadeHorsEchelle) horsEchelle.push([nom, plan.stadeHorsEchelle, etiquette]);
 
   for (const [colonne, valeur] of Object.entries(plan.aEcrire)) {
     const libelle = CHAMPS_REMONTES.find((c) => c.fiche === colonne)?.libelle || colonne;
@@ -97,4 +100,6 @@ table('SERAIT REMPLI (champ CRM vide)', ['fiche', 'colonne', 'valeur qui arrive'
 table('DIVERGE — non touché', ['fiche', 'colonne', 'au CRM', 'au document', 'document'], divergences);
 table('NOM TRONQUÉ — à compléter par le client', ['fiche', 'colonne', 'valeur', 'document'], aCompleter);
 table('AUCUN DOCUMENT VIVANT', ['fiche', 'raison'], sansSource);
+table('STADE HORS ÉCHELLE — fiche gelée tant que la valeur n\'est pas corrigée',
+  ['fiche', 'valeur trouvée', 'document'], horsEchelle);
 console.log('\nAucune écriture. Ce script lit un instantané JSON et n\'ouvre aucune connexion.');

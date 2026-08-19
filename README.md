@@ -87,6 +87,16 @@ Autres invariants :
   valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
   divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.
   `patients.procedures` (pluriel) et `hopital` restent hors périmètre. Voir `lib/fiche.ts`.
+- **La clause d'annulation conditionne « Confirmé »** : une facture **annulée** rattachée à
+  la patiente, **sans facture vivante qui la remplace**, bloque la promotion du stade — les
+  cinq colonnes de données, elles, continuent de remonter. Motif mesuré : l'annulation se
+  pose sur la facture et ne redescend jamais au devis, qui reste « accepte » pour toujours
+  (F-2026-000009 Tresor, F-2026-000012 Munao — le rattrapage du 19 août, antérieur à la
+  clause, avait promu Tresor à tort). L'exception « facture vivante » est la porte du
+  chantier « annuler et remplacer » : bloquer sur la seule présence d'une annulée gèlerait
+  toute fiche passée par un remplacement. `annulationBloqueConfirmation()` dans
+  `lib/fiche.ts`, partagée par le flux et le rattrapage ; recette sections 12-15, dont le
+  jumeau positif qui prouve que le test négatif échoue pour la bonne raison.
 - **Le rattrapage des fiches a été passé le 19 août 2026** : **41 champs sur 13 fiches**,
   aucune ligne créée ni supprimée. Sauvegarde préalable dans
   `public.sauvegarde_patients_20260819` — `enable row level security` dans la même

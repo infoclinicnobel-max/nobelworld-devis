@@ -8,7 +8,8 @@
    Usage : npx tsx scripts/recette-fiche-champs.ts */
 
 import {
-  aPaye, CLE_STADE, CHAMPS_REMONTES, ECHELLE_STADE, niveauEngagement, planifierRemontee,
+  annulationBloqueConfirmation, aPaye, CLE_STADE, CHAMPS_REMONTES, documentQuiFaitFoi,
+  ECHELLE_STADE, niveauEngagement, planifierRemontee,
   rangStade, STADE_CONFIRME, STADE_DEVIS_ENVOYE,
 } from '../lib/fiche';
 import type { DocRecord, Paiement, Patient } from '../lib/types';
@@ -148,6 +149,59 @@ console.log('\n=== 11. Le bouton manuel : la donnée, jamais l\'avancement ===')
   v('les cinq colonnes de données sont écrites', Object.keys(p.aEcrire).length === 5,
     Object.keys(p.aEcrire).join(', '));
   v('le stade n\'est PAS écrit sur un brouillon', !('stade' in p.aEcrire));
+}
+
+/* ------------------------------------------------- la clause d'annulation
+
+   Le MÊME montage pour les trois contrôles, et c'est le point : le négatif
+   seul ne prouve rien. Si l'avancement était débranché, « le stade n'a pas
+   bougé » serait vrai aussi — « la garde a retenu » et « rien ne s'est
+   produit » sont indiscernables. Le jumeau positif (13) passe le même chemin
+   — documentQuiFaitFoi, niveauEngagement, planifierRemontee, comme le flux et
+   le rattrapage — et exige l'écriture : il prouve que 12 échoue pour la bonne
+   raison. Les deux se lisent ensemble ou pas du tout. */
+const monter = (stadeFiche: string, statutFacture: string) => {
+  const sesDevis = [{ ...doc, id: 'dev_1', patientId: 'p1', statut: 'accepte' } as DocRecord];
+  const sesFactures = [{ ...doc, id: 'fac_1', patientId: 'p1', statut: statutFacture } as DocRecord];
+  const src = documentQuiFaitFoi(sesDevis, sesFactures);
+  const engagement = niveauEngagement(sesDevis, false);
+  return planifierRemontee(src!.doc, fiche({ stade: stadeFiche }), { engagement, factures: sesFactures });
+};
+
+console.log('\n=== 12. LA CLAUSE — devis accepté, facture ANNULÉE : le stade ne bouge pas ===');
+{
+  const p = monter(STADE_DEVIS_ENVOYE, 'annulee');
+  v('stade N\'EST PAS écrit — le cas Tresor', !('stade' in p.aEcrire),
+    'stade' in p.aEcrire ? 'PROMU à « ' + p.aEcrire.stade + ' »' : 'Devis envoyé conservé');
+  v('et la raison est dite', p.laisses.some((l) => l.libelle === 'stade' && /annulée/.test(l.pourquoi)),
+    p.laisses.map((l) => l.pourquoi).join(' | ') || 'aucune');
+}
+
+console.log('\n=== 13. SON JUMEAU POSITIF — même montage, facture ENVOYÉE : Confirmé ===');
+{
+  const p = monter(STADE_DEVIS_ENVOYE, 'envoye');
+  v('stade = Confirmé — l\'avancement est bien branché', p.aEcrire.stade === STADE_CONFIRME,
+    p.aEcrire.stade ? '« ' + p.aEcrire.stade + ' »' : 'RIEN — le montage n\'appelle rien, le 12 ne prouve rien');
+}
+
+console.log('\n=== 14. JAMAIS EN ARRIÈRE — même montage, fiche « Clôturé ✓ » : rien ne bouge ===');
+{
+  const p = monter('Clôturé ✓', 'envoye');
+  v('stade N\'EST PAS écrit — le cas Munao clôturé', !('stade' in p.aEcrire),
+    'stade' in p.aEcrire ? 'RECULÉ à « ' + p.aEcrire.stade + ' »' : 'Clôturé ✓ conservé');
+}
+
+console.log('\n=== 15. La clause aux bornes ===');
+{
+  const fac = (statut: string) => ({ id: 'f', statut } as DocRecord);
+  v('annulée seule → bloque', annulationBloqueConfirmation([fac('annulee')]));
+  v('annulée + vivante → ne bloque PAS (le futur « annuler et remplacer »)',
+    !annulationBloqueConfirmation([fac('annulee'), fac('envoye')]));
+  v('annulée + brouillon → bloque (un brouillon n\'engage personne)',
+    annulationBloqueConfirmation([fac('annulee'), fac('brouillon')]));
+  v('aucune facture → ne bloque pas', !annulationBloqueConfirmation([]));
+  v('sans la liste (appelant ancien) → ne bloque pas, la remontée reste entière',
+    planifierRemontee(doc, fiche(), { engagement: 'engage' }).aEcrire.stade === STADE_CONFIRME);
 }
 
 const ko = r.filter(([, ok]) => !ok);

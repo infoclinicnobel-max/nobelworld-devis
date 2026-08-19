@@ -85,7 +85,10 @@ for (const p of patients) {
     sesDevis,
     aPaye(paiements, String(p.id), sesFactures.map((f) => String(f.id || ''))),
   );
-  const plan = planifierRemontee(doc, p as never, { engagement });
+  /* Même clause que le flux : les factures partent avec le plan, sans quoi le
+     rattrapage promeut à « Confirmé » une affaire morte — c'est exactement ce
+     qui est arrivé à Tresor le 19 août. */
+  const plan = planifierRemontee(doc, p as never, { engagement, factures: sesFactures });
   if (plan.stadeHorsEchelle) horsEchelle.push([nom, plan.stadeHorsEchelle, etiquette]);
 
   for (const [colonne, valeur] of Object.entries(plan.aEcrire)) {

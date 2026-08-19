@@ -329,7 +329,12 @@ export async function remonterVersFiche(
 
   const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
-  const plan = planifierRemontee(devis, f as never, { engagement, forcerDonnees: forcer });
+  /* Les factures partent avec le plan : la clause d'annulation en a besoin
+     pour refuser « Confirmé » à une affaire morte (facture annulée sans
+     remplaçante vivante). Voir annulationBloqueConfirmation, lib/fiche.ts. */
+  const plan = planifierRemontee(devis, f as never, {
+    engagement, forcerDonnees: forcer, factures: facturesDeLaPatiente,
+  });
   const base = {
     patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes, laisses: plan.laisses,
   };

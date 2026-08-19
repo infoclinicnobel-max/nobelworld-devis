@@ -187,15 +187,42 @@ export function normaliser(v: unknown): string {
     .trim();
 }
 
+/* ------------------------------------------------- clause d'annulation
+
+   L'annulation se pose sur la FACTURE et ne remonte jamais au DEVIS : un devis
+   accepté le reste pour toujours, même quand l'affaire est morte. Mesuré : les
+   deux seules factures annulées de la base sont adossées à un devis resté
+   « accepte » — F-2026-000009 (Tresor) et F-2026-000012 (Munao). Le rattrapage
+   du 19 août, qui ne portait pas cette clause, a promu Tresor à « Confirmé »
+   à tort ; elle a été rétablie à la main. Tant que la clause vivait hors du
+   code, ça recommençait à la prochaine annulation.
+
+   La règle du cahier (chapitre 1) : un devis accepté fait passer la fiche à
+   « Confirmé » À CONDITION qu'aucune facture annulée ne lui soit rattachée.
+
+   Une facture VIVANTE lève le blocage, et c'est voulu : le chantier « annuler
+   et remplacer » (décidé le 19 août) laissera la facture fautive en base,
+   marquée annulée, sa remplaçante vivante à côté. Bloquer sur la seule
+   présence d'une annulée gèlerait pour toujours toute fiche passée par un
+   remplacement. L'annulée ne dit « affaire morte » que si rien de vivant ne
+   lui a succédé. Un brouillon ne lève rien : il n'engage personne. */
+export const STATUT_FACTURE_ANNULEE = 'annulee';
+
+export function annulationBloqueConfirmation(factures: DocRecord[]): boolean {
+  const fs = factures || [];
+  return fs.some((f) => String(f.statut || '') === STATUT_FACTURE_ANNULEE)
+    && !fs.some((f) => factureEstVivante(f.statut));
+}
+
 /* Ce que le document écrirait, ce qu'il laisse tel quel, ce qu'il signale.
    UNE seule implémentation pour les devis ET les factures : les deux partagent
    la forme DocRecord, et deux copies divergeraient au premier changement. */
 export function planifierRemontee(
   devis: DocRecord,
   fiche: Patient,
-  opts: { engagement: Engagement; forcerDonnees?: boolean } = { engagement: 'engage' },
+  opts: { engagement: Engagement; forcerDonnees?: boolean; factures?: DocRecord[] } = { engagement: 'engage' },
 ): PlanRemontee {
-  const { engagement, forcerDonnees = false } = opts;
+  const { engagement, forcerDonnees = false, factures = [] } = opts;
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
@@ -225,6 +252,17 @@ export function planifierRemontee(
     if (!valeurDevis) continue;                     // rien à proposer
 
     if (estStade) {
+      /* La clause d'annulation, AVANT la règle ordonnée : un « Confirmé »
+         proposé pour une affaire morte n'est pas un rang à comparer, c'est une
+         proposition qui n'a pas lieu d'être. Et on le DIT — sans cette phrase,
+         l'assistante voit la fiche rester en place et conclut à une panne. */
+      if (valeurDevis === STADE_CONFIRME && annulationBloqueConfirmation(factures)) {
+        laisses.push({
+          libelle: champ.libelle,
+          pourquoi: 'une facture annulée est rattachée à la fiche, sans facture vivante qui la remplace',
+        });
+        continue;
+      }
       /* LA règle ordonnée, et la seule du fichier. Un stade ne monte que d'un
          rang strictement supérieur ; il ne recule jamais. */
       const actuel = rangStade(valeurCrm);

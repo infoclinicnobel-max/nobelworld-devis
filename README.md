@@ -121,7 +121,11 @@ Autres invariants :
   copie serait sinon lisible par `anon`. Le décompte ne vient pas du script mais d'une
   comparaison avec cette sauvegarde ; les **34 autres colonnes** en sont ressorties
   identiques ligne à ligne, `updated_at` compris (il n'y a pas de déclencheur sur
-  `patients`). Le rapport gagne un mode `--sql` qui **imprime** les `UPDATE` au lieu de les
+  `patients`). ⚠️ **Sur les quatre tables `sauvegarde_*` : RLS activé et ZÉRO politique,
+  et ce vide EST la fermeture** — en Postgres, RLS sans politique refuse tout à `anon` et
+  `authenticated`. Une liste de politiques vide n'est pas un oubli à « corriger » : y
+  ajouter une politique permissive ouvrirait d'un coup une copie complète de 68 dossiers
+  patients. Vérifié le 19 août 2026. Le rapport gagne un mode `--sql` qui **imprime** les `UPDATE` au lieu de les
   passer : le fichier n'ouvre toujours aucune connexion, et le SQL est relu avant d'être
   exécuté. **Chaque ordre porte sa propre garde** — `and coalesce("colonne", '') = <la
   valeur lue>` — si bien que la règle ne vit pas seulement dans le script : rejouer le lot

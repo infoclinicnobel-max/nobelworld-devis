@@ -77,7 +77,7 @@ export function SearchResults({ q, onClear }: { q: string; onClear: () => void }
               {dvs.map((d) => (
                 <tr key={d.id} className="clickable" onClick={() => go('devis')}>
                   <td className="t-strong">{d.numero}</td>
-                  <td><StatusBadge s={d.statut} /></td>
+                  <td><StatusBadge s={d.statut} doc="devis" /></td>
                   <td className="tnum">{money(totalOf(d), data.parametres.currency || '€')}</td>
                 </tr>
               ))}

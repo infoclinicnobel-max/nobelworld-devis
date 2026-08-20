@@ -166,6 +166,10 @@ export type Engagement = 'aucun' | 'envoye' | 'engage';
 
 export function niveauEngagement(devisDeLaPatiente: DocRecord[], paye: boolean): Engagement {
   if (paye || devisDeLaPatiente.some((d) => remonteeAutomatique(d.statut))) return 'engage';
+  /* Comparaison STRICTE, et c'est une garde, pas un hasard : « refuse » et
+     « expire » (statuts classés, 19 août) doivent tomber à « aucun » — un
+     dossier éteint ne propose plus de stade. La recette
+     scripts/recette-statuts-devis.ts rougit si cette ligne s'assouplit. */
   if (devisDeLaPatiente.some((d) => String(d.statut || '') === 'envoye')) return 'envoye';
   return 'aucun';
 }

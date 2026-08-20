@@ -37,17 +37,23 @@ export function ToastHost({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function StatusBadge({ s }: { s?: string }) {
+/* `doc="devis"` accorde le libellé à l'objet : « Envoyé » sur un devis,
+   « Envoyée » sur une facture. Sans le paramètre, le comportement historique
+   (féminin) est conservé — les appels existants ne bougent pas. `refuse` et
+   `expire` sont les deux états « classés » des devis (Veys, 19 août 2026). */
+export function StatusBadge({ s, doc }: { s?: string; doc?: 'devis' | 'facture' }) {
   const map: Record<string, [string, string]> = {
     brouillon: ['b-draft', 'Brouillon'], envoye: ['b-part', 'Envoyée'], accepte: ['b-paid', 'Accepté'],
     attente: ['b-draft', 'Brouillon'], acompte: ['b-wait', 'Acompte reçu'], partielle: ['b-part', 'Paiement partiel'],
     payee: ['b-paid', 'Payée'], annulee: ['b-cancel', 'Annulée'],
+    refuse: ['b-cancel', 'Refusé'], expire: ['b-draft', 'Expiré'],
   };
   const [cls, lab] = map[s || ''] || ['b-draft', s || '—'];
+  const label = doc === 'devis' && s === 'envoye' ? 'Envoyé' : lab;
   return (
     <span className={'badge ' + cls}>
       <span className="dot"></span>
-      {lab}
+      {label}
     </span>
   );
 }

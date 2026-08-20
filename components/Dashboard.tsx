@@ -116,7 +116,7 @@ export function Dashboard() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div className="t-strong tnum">{money(totalOf(d), cur)}</div>
-                    <div style={{ fontSize: 11 }}><StatusBadge s={d.statut} /></div>
+                    <div style={{ fontSize: 11 }}><StatusBadge s={d.statut} doc="devis" /></div>
                   </div>
                 </div>
               );

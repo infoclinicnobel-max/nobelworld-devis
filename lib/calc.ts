@@ -106,8 +106,38 @@ export function factureStatus(f: DocRecord, payments: Paiement[] | undefined): s
   return f.statut === 'envoye' ? 'envoye' : 'brouillon';
 }
 
+/* ----- Statuts « classés » des devis — décidé par Veys le 19 août 2026 -----
+
+   « On ne les fait pas disparaître, on fait une rubrique pour dire ces devis,
+   ils sont en attente. » Les devis n'avaient que trois états ; un refusé ou un
+   sans-réponse restait éternellement « envoyé », et la corbeille devenait le
+   seul nettoyage. Deux états s'ajoutent — refuse, expire — et pas plus :
+   « en attente » n'est pas un état nouveau, c'est ce que « envoyé » veut déjà
+   dire, et chaque état de plus est un endroit de plus où perdre un dossier.
+
+   Les transitions sont MANUELLES, jamais calculées : `validite` porte dix
+   durées saisies à la main (8 à 146 jours), et D-2026-000037 — un devis du
+   28 mars, validité étirée au 21 août — a été accepté, facturé, opéré. Une
+   expiration automatique l'aurait classé mort pendant des mois, sur l'affaire
+   la plus vivante de la base. L'écran peut DIRE « validité dépassée »
+   (validiteDepassee, calculée à l'affichage) ; il ne reclasse jamais. */
+export const STATUTS_DEVIS_CLASSES = ['refuse', 'expire'] as const;
+
+export const devisEstClasse = (statut: unknown) =>
+  (STATUTS_DEVIS_CLASSES as readonly string[]).includes(String(statut || ''));
+
+/* `aujourdhui` est fourni par l'appelant (todayISO()) : la fonction reste pure
+   et sa recette rejouable. Un devis non « envoyé » ne peut pas être en retard
+   de réponse — c'est précisément le cas D-2026-000037. */
+export function validiteDepassee(d: DocRecord, aujourdhui: string): boolean {
+  const v = String(d.validite || '');
+  return d.statut === 'envoye' && /^\d{4}-\d{2}-\d{2}$/.test(v) && v < String(aujourdhui || '');
+}
+
 /* Un document parti chez une patiente ne doit plus bouger : l'éditeur reste ouvert
-   mais on avertit clairement dès qu'un devis n'est plus au brouillon. */
+   mais on avertit clairement dès qu'un devis n'est plus au brouillon. Un devis
+   classé (refusé, expiré) est parti lui aussi : il reste figé, quel que soit
+   son sort. */
 export function estFige(d: DocRecord): boolean {
-  return d.statut === 'envoye' || d.statut === 'accepte';
+  return d.statut === 'envoye' || d.statut === 'accepte' || devisEstClasse(d.statut);
 }

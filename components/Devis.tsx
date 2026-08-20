@@ -17,6 +17,7 @@ import {
 import { can, estDeMoi, userLabel } from '@/lib/perms';
 import { CHAMPS_REMONTES } from '@/lib/fiche';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
+import { nettoyerActes } from '@/lib/catalogue';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -508,6 +509,7 @@ export function DevisEditor({
         options: [...(s.options || []), { id: uid('o'), nom: '', detail: '', qty: 1, prix: 0, retenue: false }],
       })),
     modeles: data.modeles,
+    correspondances: data.correspondances,
     acteDepuisModele,
     optDepuisModele,
     setOpt: (i, k, v) =>
@@ -538,6 +540,11 @@ export function DevisEditor({
 
   const persist = async (statut?: string | null) => {
     const payload: DocRecord = { ...f, statut: statut || f.statut || 'brouillon' };
+    /* La ligne vide sert à la saisie ; elle ne PART pas. Deux devis émis en
+       portaient une au milieu du tableau d'actes (D-2026-000023, D-2026-000033)
+       — un document médical imprimé avec une ligne blanche. Retirée à
+       l'enregistrement seulement : rien de rétroactif. */
+    payload.actes = nettoyerActes(payload.actes);
     // Dates toujours envoyées en « YYYY-MM-DD » propre ; une valeur illisible devient
     // vide au lieu de bloquer l'enregistrement.
     const cleanD = (v: unknown) => {
@@ -719,6 +726,7 @@ export function DevisEditor({
               devise={cur}
               libelle="Appliquer un modèle au devis"
               className="btn btn-sm"
+              correspondances={data.correspondances}
               onChoisir={applyModele}
             />
             <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '6px 0 0' }}>

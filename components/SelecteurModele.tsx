@@ -3,7 +3,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ico } from './icons';
 import { money } from '@/lib/format';
-import { detecterAmbiguites, filtrerModeles, grouperModeles } from '@/lib/catalogue';
+import {
+  detecterAmbiguites, filtrerModeles, grouperModeles, type Correspondance,
+} from '@/lib/catalogue';
 import type { Modele } from '@/lib/types';
 
 /* =========================================================================
@@ -18,19 +20,25 @@ import type { Modele } from '@/lib/types';
    ------------------------------------------------------------------------- */
 export function SelecteurModele({
   modeles, onChoisir, libelle = 'Appliquer un modèle', devise = '€', className = 'addrow',
+  correspondances,
 }: {
   modeles: Modele[];
   onChoisir: (m: Modele) => void;
   libelle?: string;
   devise?: string;
   className?: string;
+  /** Libellés d'usage (« valide » seulement) qui étendent la recherche. */
+  correspondances?: Correspondance[];
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [q, setQ] = useState('');
   const boite = useRef<HTMLDivElement>(null);
   const champ = useRef<HTMLInputElement>(null);
 
-  const groupes = useMemo(() => grouperModeles(filtrerModeles(modeles, q)), [modeles, q]);
+  const groupes = useMemo(
+    () => grouperModeles(filtrerModeles(modeles, q, correspondances)),
+    [modeles, q, correspondances],
+  );
   /* Le CRM porte des synonymes partagés par deux prestations. Quand la saisie
      tombe sur l'un d'eux, on refuse le clic au jugé : on nomme le terme et on
      fait choisir sur le libellé, tarifs sous les yeux. */

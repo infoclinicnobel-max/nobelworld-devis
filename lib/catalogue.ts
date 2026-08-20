@@ -8,7 +8,25 @@
    du CRM sont déjà remplies. Rien n'est écrit au catalogue, jamais. */
 
 import { safeLower } from './format';
-import type { Modele } from './types';
+import type { Acte, Modele } from './types';
+
+/** Une ligne de `catalogue_correspondances`, telle que chargée dans AppData. */
+export interface Correspondance { libelle: string; catalogueId: string | null; statut: string }
+
+/* Clé de comparaison des libellés : accents, casse et espaces multiples
+   effacés — la ponctuation reste. Mesuré le 20 août : la table de
+   correspondances porte quatre paires qui n'existent que pour rattraper des
+   majuscules (« Fox eyes » / « Fox Eyes »…) — huit lignes sur cinquante-six de
+   typographie au milieu de vrais arbitrages tarifaires. Une table de
+   traduction ne doit pas porter de typographie : c'est la comparaison qui
+   l'absorbe. (Ces huit lignes deviennent retirables côté CRM — pas par nous.) */
+export const cleLibelle = (v: unknown): string =>
+  String(v ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export interface GroupeModeles {
   titre: string;
@@ -52,17 +70,82 @@ export function grouperModeles(modeles: Modele[]): GroupeModeles[] {
   return groupes;
 }
 
-/* La recherche porte sur le libellé ET sur les synonymes du CRM : c'est ce qui
-   permet de trouver « liposuccion 360 + BBL » quand la ligne s'appelle
-   « SAFE BBL + Liposuccion Vaser HD 360° ». Chaque mot saisi doit être présent
-   quelque part — l'ordre des mots n'a donc aucune importance. */
-export function filtrerModeles(modeles: Modele[], recherche: string): Modele[] {
+/* La recherche porte sur le libellé, les synonymes du CRM, ET les libellés
+   d'usage de `catalogue_correspondances` au statut « valide » : taper
+   « SAFE BBL » — le nom que cinq devis emploient — trouve la ligne officielle.
+
+   Les correspondances « a_verifier » ne nourrissent JAMAIS la recherche :
+   guider une main vers une ligne tarifée sur la foi d'une correspondance non
+   relue, c'est un tarif engagé sans relecture (cahier, ch. 2). La recette
+   scripts/recette-selecteur-catalogue.ts rougit si ce filtre s'assouplit.
+
+   Chaque mot saisi doit être présent quelque part — l'ordre des mots n'a
+   aucune importance. `correspondances` est optionnel : les appelants existants
+   ne changent pas. */
+export function filtrerModeles(
+  modeles: Modele[], recherche: string, correspondances?: Correspondance[],
+): Modele[] {
   const mots = safeLower(recherche).split(/\s+/).filter(Boolean);
   if (!mots.length) return modeles;
+  const usages = new Map<string, string[]>();
+  for (const c of correspondances || []) {
+    if (c.statut !== 'valide' || !c.catalogueId) continue;
+    (usages.get(c.catalogueId) || usages.set(c.catalogueId, []).get(c.catalogueId)!).push(c.libelle);
+  }
   return modeles.filter((m) => {
-    const foin = safeLower([m.nom, m.categorie, m.sousCategorie, ...(m.synonymes || [])].join(' '));
+    const foin = safeLower(
+      [m.nom, m.categorie, m.sousCategorie, ...(m.synonymes || []), ...(usages.get(m.id) || [])].join(' '),
+    );
     return mots.every((mot) => foin.includes(mot));
   });
+}
+
+/* --------------------------------------------- reconnaissance d'un libellé
+
+   Ce qu'un libellé d'acte VAUT face au catalogue — une lecture, jamais une
+   écriture : la pastille de l'éditeur s'en sert pour DIRE, pas pour corriger.
+   Mesuré le 20 août sur les 29 libellés des 22 devis : 7 exacts, 9 par
+   correspondance valide, 1 par une « a_verifier », 12 sans rien.
+
+   Priorité : l'égalité avec le catalogue l'emporte sur la table (elle n'a pas
+   besoin d'elle), puis « valide » l'emporte sur « a_verifier » — les quatre
+   paires de casse de la table visent la même cible, l'ordre est donc sans
+   perte. */
+export interface ResolutionLibelle {
+  etat: 'exact' | 'valide' | 'a_verifier' | 'aucun';
+  /** La ligne du catalogue visée — absente si l'état est « aucun », ou si la
+      cible de la correspondance n'est plus dans les lignes actives. */
+  modele?: Modele;
+}
+
+export function resoudreLibelle(
+  libelle: unknown, modeles: Modele[], correspondances?: Correspondance[],
+): ResolutionLibelle {
+  const cle = cleLibelle(libelle);
+  if (!cle) return { etat: 'aucun' };
+  const exact = modeles.find((m) => cleLibelle(m.nom) === cle);
+  if (exact) return { etat: 'exact', modele: exact };
+  const candidates = (correspondances || []).filter((c) => c.catalogueId && cleLibelle(c.libelle) === cle);
+  const retenue = candidates.find((c) => c.statut === 'valide') || candidates[0];
+  if (!retenue) return { etat: 'aucun' };
+  return {
+    etat: retenue.statut === 'valide' ? 'valide' : 'a_verifier',
+    modele: modeles.find((m) => m.id === retenue.catalogueId),
+  };
+}
+
+/* ------------------------------------------------------- lignes d'acte vides
+
+   Mesuré le 20 août : deux devis émis (D-2026-000023, D-2026-000033) portent
+   une ligne d'acte entièrement vide — une ligne blanche au milieu du tableau
+   d'actes d'un document médical imprimé. L'éditeur ajoute une ligne vide pour
+   la saisie ; elle ne doit pas PARTIR. Retirée à l'enregistrement seulement :
+   les deux existantes ne bougent pas tant que leur devis n'est pas
+   réenregistré — aucune écriture rétroactive. */
+export function nettoyerActes(actes: Acte[] | undefined): Acte[] {
+  return (actes || []).filter(
+    (a) => String(a?.acte ?? '').trim() !== '' || String(a?.inclus ?? '').trim() !== '',
+  );
 }
 
 /* ------------------------------------------------------ synonymes ambigus

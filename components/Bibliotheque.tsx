@@ -25,6 +25,12 @@ export function ModelesView() {
   /* Anciens libellés Nobel World restés sans correspondance au catalogue :
      l'application le signale à l'écran, elle ne crée jamais de ligne. */
   const sansCorrespondance = data.correspondances.filter((c) => !c.catalogueId);
+  /* Correspondances en attente de relecture : une décision en attente qui
+     n'est affichée nulle part n'est pas en attente — elle est oubliée (31
+     lignes dorment depuis le 6 août). Une ligne de compte, PAS de bouton
+     « tout valider » — ni maintenant ni jamais : chaque correspondance engage
+     un tarif, et sa relecture appartient à Veys, une par une, côté CRM. */
+  const aVerifier = data.correspondances.filter((c) => c.catalogueId && c.statut === 'a_verifier');
 
   return (
     <>
@@ -61,6 +67,20 @@ export function ModelesView() {
           ⚠ {sansCorrespondance.length} ancien(s) libellé(s) Nobel World sans correspondance au catalogue :{' '}
           {sansCorrespondance.map((c) => c.libelle).join(' · ')}. Ces libellés restent utilisables en saisie libre sur
           un devis ; leur rattachement se fait côté CRM.
+        </div>
+      )}
+
+      {!!aVerifier.length && (
+        <div
+          className="card card-pad"
+          style={{
+            marginBottom: 16, background: '#fff7e8', border: '1px solid #f0dcae',
+            color: '#7a5d1f', fontSize: 12.5, lineHeight: 1.6,
+          }}
+        >
+          ⚠ {aVerifier.length} correspondance(s) de libellés attendent une relecture côté CRM. Tant qu&apos;elles ne
+          sont pas validées, ces libellés d&apos;usage n&apos;étendent pas la recherche du sélecteur — une
+          correspondance non relue qui composerait un devis serait un tarif engagé sans relecture.
         </div>
       )}
 

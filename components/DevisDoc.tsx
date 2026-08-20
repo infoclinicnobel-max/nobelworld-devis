@@ -10,6 +10,7 @@ import {
   DEFAULT_IMPORTANT, DEFAULT_PAIEMENT_NOTE, PDF_TEXTS, settingsImpLines, type Settings,
 } from '@/lib/defaults';
 import { can, userLabel, type AppUser } from '@/lib/perms';
+import { resoudreLibelle, type Correspondance } from '@/lib/catalogue';
 import {
   devisTotal, estRetenue, factPayments, optionsADecider, optsSum, patientName, remiseMontant,
   totalOf, totalSiToutesOptions,
@@ -43,6 +44,10 @@ export interface DocHandlers {
   /* Catalogue et écritures depuis un modèle — fournis par l'éditeur seulement.
      Le sélecteur rend le modèle choisi ; c'est l'éditeur qui décide où l'écrire. */
   modeles?: Modele[];
+  /* Libellés d'usage de catalogue_correspondances : étendent la recherche du
+     sélecteur (« valide » seulement) et alimentent la pastille de
+     reconnaissance des actes. Lecture pure, jamais une écriture. */
+  correspondances?: Correspondance[];
   acteDepuisModele?: (m: Modele) => void;
   optDepuisModele?: (m: Modele) => void;
   setOpt: (i: number, k: string, v: string | number | boolean) => void;
@@ -50,6 +55,40 @@ export interface DocHandlers {
   addImp: () => void;
   setImp: (i: number, v: string) => void;
   rmImp: (i: number) => void;
+}
+
+/* ---- Pastille de reconnaissance d'un libellé d'acte — ÉDITEUR SEULEMENT ----
+
+   Une lecture superposée, jamais une écriture : elle dit ce qu'un libellé VAUT
+   face au catalogue, elle ne corrige rien, ne propose rien, ne survit pas à
+   l'impression (le PDF passe par editable=false et ne la rend jamais).
+
+   ⚠ « hors catalogue » est un FAIT, pas une alerte — douze libellés sur
+   vingt-neuf le sont aujourd'hui, dont des combos parfaitement légitimes. Un
+   badge qui décrit peut rester affiché en permanence ; un badge qui accuse
+   cesse d'être lu en une semaine. NE PAS transformer ce texte en « ⚠ non
+   reconnu » ou « à corriger » : la neutralité de la formulation est le
+   mécanisme qui rend l'affichage permanent tenable. */
+function PastilleCatalogue({
+  libelle, modeles, correspondances,
+}: { libelle: string; modeles?: Modele[]; correspondances?: Correspondance[] }) {
+  if (!String(libelle || '').trim() || !modeles?.length) return null;
+  const r = resoudreLibelle(libelle, modeles, correspondances);
+  const style: React.CSSProperties = {
+    fontSize: 10.5, lineHeight: 1.4, marginTop: 2, color: 'var(--muted-2)',
+  };
+  if (r.etat === 'exact') return <div style={style}>✓ au catalogue</div>;
+  if (r.etat === 'valide') {
+    return <div style={style}>✓ reconnu : {r.modele ? r.modele.nom : 'ligne inactive du catalogue'}</div>;
+  }
+  if (r.etat === 'a_verifier') {
+    return (
+      <div style={{ ...style, color: '#7a5d1f' }}>
+        ⚠ correspondance à vérifier : {r.modele ? r.modele.nom : 'ligne inactive du catalogue'}
+      </div>
+    );
+  }
+  return <div style={style}>hors catalogue</div>;
 }
 
 /* `cree_par` porte un nom lisible (« Veys Turan ») et non un identifiant :
@@ -674,11 +713,18 @@ export function DevisDoc({
                     <tr key={a.id}>
                       <td className="act">
                         {E ? (
-                          <EditableText
-                            value={a.acte}
-                            placeholder="Acte"
-                            onChange={(v) => on!.setActe(a.id, 'acte', v)}
-                          />
+                          <>
+                            <EditableText
+                              value={a.acte}
+                              placeholder="Acte"
+                              onChange={(v) => on!.setActe(a.id, 'acte', v)}
+                            />
+                            <PastilleCatalogue
+                              libelle={a.acte}
+                              modeles={on!.modeles}
+                              correspondances={on!.correspondances}
+                            />
+                          </>
                         ) : (
                           a.acte
                         )}
@@ -715,6 +761,7 @@ export function DevisDoc({
                       modeles={on!.modeles}
                       devise={cur}
                       libelle="Appliquer un modèle à un acte"
+                      correspondances={on!.correspondances}
                       onChoisir={(m) => on!.acteDepuisModele!(m)}
                     />
                   )}
@@ -788,6 +835,7 @@ export function DevisDoc({
                         modeles={on!.modeles}
                         devise={cur}
                         libelle="Appliquer un modèle à une option"
+                        correspondances={on!.correspondances}
                         onChoisir={(m) => on!.optDepuisModele!(m)}
                       />
                     )}

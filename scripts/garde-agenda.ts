@@ -10,8 +10,14 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const RACINE = new URL('..', import.meta.url).pathname;
+/* `.pathname` d'une URL file:// rend « /C:/Users/… » sous Windows, que join()
+   retourne en « C:\C:\… » : la garde plantait avant son premier contrôle sur
+   cette plateforme — découvert le 20 août, au premier déploiement. Un contrôle
+   qui ne peut pas s'exécuter doit le dire ; celui-ci criait, c'est bien, mais
+   il doit surtout pouvoir tourner partout où le dépôt vit. */
+const RACINE = fileURLToPath(new URL('..', import.meta.url));
 const IGNORES = new Set(['node_modules', '.next', '.git', 'scripts']);
 
 function sources(dossier: string, acc: string[] = []): string[] {
@@ -33,8 +39,10 @@ const sansCommentaires = (t: string) =>
   t.replace(/\/\*[\s\S]*?\*\//g, '')
    .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
+/* Chemins relatifs TOUJOURS en « / », quel que soit le séparateur de la
+   plateforme : les contrôles ci-dessous comparent à « lib/data.ts ». */
 const fichiers = sources(RACINE)
-  .map((p) => ({ p: p.replace(RACINE, ''), t: sansCommentaires(readFileSync(p, 'utf8')) }));
+  .map((p) => ({ p: p.replace(RACINE, '').replace(/\\/g, '/'), t: sansCommentaires(readFileSync(p, 'utf8')) }));
 const compter = (motif: RegExp) =>
   fichiers.flatMap((f) => (f.t.match(motif) || []).map(() => f.p));
 

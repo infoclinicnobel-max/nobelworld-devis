@@ -306,7 +306,15 @@ export function planifierRemontee(
        Une écriture qui recopie sa source propage l'état de sa source ; une
        écriture qui traduit vers un vocabulaire connu le protège. */
     if (champ.fiche === 'medecin' && medecins !== undefined && vide(valeurCrm)) {
-      const canonique = medecins.find((m) => normaliser(m) === normaliser(valeurDevis));
+      /* Jointure sur cles NON VIDES des deux cotes : un libelle de pure
+         ponctuation se normalise a vide, et une cle vide s'apparierait a toute
+         entree degeneree du vocabulaire — une correspondance FABRIQUEE au lieu
+         d'etre trouvee (garde posee le 20 aout, apres le meme piege dans une
+         jointure SQL). */
+      const cleChirurgien = normaliser(valeurDevis);
+      const canonique = cleChirurgien
+        ? medecins.find((m) => normaliser(m) === cleChirurgien)
+        : undefined;
       if (canonique) { aEcrire[champ.fiche] = canonique; continue; }
       chirurgienInconnu = valeurDevis;
       laisses.push({

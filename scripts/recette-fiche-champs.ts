@@ -281,6 +281,17 @@ console.log('\n=== 18. Le chirurgien se TRADUIT, ne se recopie pas ===');
   const sans = planifierRemontee(doc, fiche(), { engagement: 'engage' });
   v('sans l\'option (appelant ancien) : comportement d\'avant, mot pour mot',
     sans.aEcrire.medecin === 'AZAR ZEYNALOV', sans.aEcrire.medecin);
+
+  /* La garde des clés vides — le piège vu dans une jointure SQL le 20 août :
+     une chaîne vide s'apparie à une chaîne vide, et la correspondance est
+     FABRIQUÉE au lieu d'être trouvée. Un libellé de pure ponctuation (« ... »)
+     se normalise à vide ; face à un vocabulaire portant une entrée dégénérée
+     (« Pr  » seul se normalise à vide aussi), il ne doit rien épouser. */
+  const degenere = planifierRemontee({ ...doc, chirurgien: '...' }, fiche(),
+    { engagement: 'engage', medecins: ['Pr ', 'Dr Anvar Ahmedov'] });
+  v('clé normalisée à vide : REFUSÉ, jamais apparié à une entrée dégénérée',
+    !('medecin' in degenere.aEcrire) && degenere.chirurgienInconnu === '...',
+    'medecin' in degenere.aEcrire ? 'APPARIÉ à « ' + degenere.aEcrire.medecin + ' »' : 'refusé');
 }
 
 const ko = r.filter(([, ok]) => !ok);

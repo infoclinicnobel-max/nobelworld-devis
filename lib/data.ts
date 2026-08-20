@@ -284,11 +284,19 @@ export async function remonterVersFiche(
      calendrier la recopie, donc il faut la lire. `historique` est lu pour y
      APPOSER la trace de l'écriture, jamais pour le réécrire seul. */
   const colonnes = ['id', 'prenom', 'nom', 'hopital', 'historique', ...COLONNES_AUTORISEES].join(',');
-  const [ficheR, devisR, facturesR, paiementsR] = await Promise.all([
+  const [ficheR, devisR, facturesR, paiementsR, medecinsR] = await Promise.all([
     sb.from('patients').select(colonnes).eq('id', id).maybeSingle(),
     sb.from('nw_devis').select('*').eq('patient_id', id),
     sb.from('nw_factures').select('*').eq('patient_id', id),
     sb.from('nw_paiements').select('*'),
+    /* Vocabulaire canonique des chirurgiens (règle du chapitre 1) : lecture
+       seule, RLS `medecins_read` ouverte à tout rôle non anonyme. Pas de
+       filtre sur `actif` : colonne texte à la convention posée « au jugé »
+       le 19 août (v1.84) — s'y fier viderait le vocabulaire en silence si la
+       convention changeait. En cas d'erreur de lecture, le vocabulaire est
+       VIDE et non absent : tout medecin est alors refusé et dit (v1.83),
+       jamais recopié brut. */
+    sb.from('medecins').select('nomAffiche'),
   ]);
   if (ficheR.error) throw new Error('Fiche patiente illisible : ' + ficheR.error.message);
   if (!ficheR.data) return { ...vide, statut: 'fiche-introuvable' };
@@ -335,11 +343,20 @@ export async function remonterVersFiche(
 
   const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
+  if (medecinsR.error) {
+    console.warn('[CN][fiche] table medecins illisible — tout chirurgien sera refusé :', medecinsR.error.message);
+  }
+  const vocabulaireMedecins = (medecinsR.data || [])
+    .map((m: { nomAffiche?: unknown }) => String(m.nomAffiche || '').trim())
+    .filter(Boolean);
+
   /* Les factures partent avec le plan : la clause d'annulation en a besoin
      pour refuser « Confirmé » à une affaire morte (facture annulée sans
-     remplaçante vivante). Voir annulationBloqueConfirmation, lib/fiche.ts. */
+     remplaçante vivante). Les médecins aussi : la règle du chapitre 1 écrit
+     la forme canonique ou refuse, jamais la valeur brute du devis. */
   const plan = planifierRemontee(devis, f as never, {
     engagement, forcerDonnees: forcer, factures: facturesDeLaPatiente,
+    medecins: vocabulaireMedecins,
   });
   const base = {
     patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes, laisses: plan.laisses,

@@ -158,6 +158,8 @@ export interface PlanRemontee {
   laisses: { libelle: string; pourquoi: string }[];
   /** Valeur de stade hors échelle rencontrée : à porter au rapport. */
   stadeHorsEchelle?: string;
+  /** Chirurgien du document absent du vocabulaire `medecins` : refusé, à dire. */
+  chirurgienInconnu?: string;
 }
 
 /* Trois niveaux, pas deux. Un devis ENVOYÉ parle au CRM, mais pour dire une
@@ -220,14 +222,24 @@ export function annulationBloqueConfirmation(factures: DocRecord[]): boolean {
 export function planifierRemontee(
   devis: DocRecord,
   fiche: Patient,
-  opts: { engagement: Engagement; forcerDonnees?: boolean; factures?: DocRecord[] } = { engagement: 'engage' },
+  opts: {
+    engagement: Engagement; forcerDonnees?: boolean; factures?: DocRecord[];
+    /* Vocabulaire canonique des chirurgiens : les `nomAffiche` de la table
+       `medecins` (4 lignes depuis le 19 août, RLS en lecture pour tout rôle
+       non anonyme). ABSENT (undefined), la règle de traduction ne s'applique
+       pas — compatibilité des appelants anciens ; les deux appelants réels la
+       passent toujours. PRÉSENT et vide, tout `medecin` est refusé : c'est
+       l'interdit v1.83, qui se réimpose de lui-même si la table se vide. */
+    medecins?: readonly string[];
+  } = { engagement: 'engage' },
 ): PlanRemontee {
-  const { engagement, forcerDonnees = false, factures = [] } = opts;
+  const { engagement, forcerDonnees = false, factures = [], medecins } = opts;
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
   const laisses: { libelle: string; pourquoi: string }[] = [];
   let stadeHorsEchelle: string | undefined;
+  let chirurgienInconnu: string | undefined;
 
   for (const champ of CHAMPS_REMONTES) {
     const estStade = champ.devis === CLE_STADE;
@@ -282,6 +294,30 @@ export function planifierRemontee(
       continue;
     }
 
+    /* ---- medecin : TRADUIT, jamais recopié (règle du chapitre 1) ----
+
+       Quand le champ CRM est vide il n'y a pas de comparaison, il y a une
+       écriture — et elle prenait la valeur du devis telle quelle : c'est
+       ainsi que « ANVAR AHMEDOV » et « AZAR ZEYNALOV » sont entrés bruts sur
+       Cindy, Diallo et El Acmaoui (17-18 août), première écriture définitive.
+       Désormais : on écrit la forme canonique (`medecins.nomAffiche`) quand
+       la comparaison normalisée aboutit, on refuse et on signale sinon. Un
+       nom sans patronyme (« Dr Anvar ») ne correspond à rien : refusé aussi.
+       Une écriture qui recopie sa source propage l'état de sa source ; une
+       écriture qui traduit vers un vocabulaire connu le protège. */
+    if (champ.fiche === 'medecin' && medecins !== undefined && vide(valeurCrm)) {
+      const canonique = medecins.find((m) => normaliser(m) === normaliser(valeurDevis));
+      if (canonique) { aEcrire[champ.fiche] = canonique; continue; }
+      chirurgienInconnu = valeurDevis;
+      laisses.push({
+        libelle: champ.libelle,
+        pourquoi: medecins.length
+          ? `« ${valeurDevis} » ne correspond à aucun médecin de la table medecins — refusé et signalé`
+          : "le vocabulaire des médecins est vide ou illisible : on n'écrit pas (interdit v1.83)",
+      });
+      continue;
+    }
+
     /* Les cinq autres : règle stricte, inchangée depuis le premier lot. */
     if (vide(valeurCrm)) { aEcrire[champ.fiche] = valeurDevis; continue; }
     if (normaliser(valeurCrm) === normaliser(valeurDevis)) { dejaConformes.push(champ.libelle); continue; }
@@ -291,7 +327,7 @@ export function planifierRemontee(
     if (champ.silencieux) continue;
     divergences.push({ libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis });
   }
-  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle };
+  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle, chirurgienInconnu };
 }
 
 

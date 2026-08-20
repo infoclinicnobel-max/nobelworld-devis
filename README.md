@@ -97,6 +97,15 @@ Autres invariants :
   toute fiche passée par un remplacement. `annulationBloqueConfirmation()` dans
   `lib/fiche.ts`, partagée par le flux et le rattrapage ; recette sections 12-15, dont le
   jumeau positif qui prouve que le test négatif échoue pour la bonne raison.
+- **Le chirurgien se traduit, ne se recopie jamais** : quand `patients.medecin` est vide,
+  la remontée écrit la forme canonique (`medecins.nomAffiche`, 4 lignes depuis le 19 août,
+  RLS en lecture pour tout rôle non anonyme) quand la comparaison normalisée aboutit, et
+  **refuse en signalant** sinon — nom inconnu, patronyme manquant (« Dr Anvar »), ou
+  vocabulaire vide/illisible (l'interdit v1.83 se réimpose alors de lui-même). Motif
+  mesuré : la recopie brute a produit « ANVAR AHMEDOV » et « AZAR ZEYNALOV » sur Cindy,
+  Diallo et El Acmaoui les 17-18 août, premières écritures définitives réparées à la main.
+  Pas de filtre sur `medecins.actif` (convention texte posée « au jugé », v1.84).
+  Recette section 18.
 - **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
   colonne dans `patients.historique` — le journal de fiche du CRM, format
   `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —

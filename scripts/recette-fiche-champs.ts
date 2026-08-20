@@ -240,6 +240,49 @@ console.log('\n=== 17. Le journal aux bornes : tracer sans jamais détruire ==='
   v('JSON mais pas un tableau → null aussi', journaliserRemontee('{"u":"x"}', { budget: '5600' }, () => '', sig) === null);
 }
 
+/* --------------------------------------------- la traduction du chirurgien
+
+   Règle du chapitre 1, qui a enfin sa cible depuis le 19 août : la table
+   medecins (4 nomAffiche). On écrit la forme canonique quand la comparaison
+   normalisée aboutit, on refuse et on signale sinon. Le négatif (refus) a son
+   jumeau positif (canonique écrit) sur le même montage : sans lui, « rien
+   n'a été écrit » ne distingue pas la garde d'un mécanisme débranché. */
+console.log('\n=== 18. Le chirurgien se TRADUIT, ne se recopie pas ===');
+{
+  const VOCAB = ['Dr Anvar Ahmedov', 'Dr Azar Zeynalov', 'Dr Orkun Uyanik', 'Dr VSC Dental'];
+  const avec = (chirurgien: string, ficheOpts: Record<string, string> = {}) =>
+    planifierRemontee({ ...doc, chirurgien }, fiche(ficheOpts), { engagement: 'engage', medecins: VOCAB });
+
+  const p = avec('AZAR ZEYNALOV');
+  v('« AZAR ZEYNALOV » → « Dr Azar Zeynalov » ÉCRIT — le jumeau positif',
+    p.aEcrire.medecin === 'Dr Azar Zeynalov', p.aEcrire.medecin || 'RIEN');
+  const q = avec('anvar ahmedov');
+  v('casse et « Dr » ignorés à la comparaison, canonique à l\'écriture',
+    q.aEcrire.medecin === 'Dr Anvar Ahmedov', q.aEcrire.medecin || 'RIEN');
+
+  const inc = avec('Dr Jean Dupont');
+  v('inconnu du vocabulaire : REFUSÉ, rien d\'écrit', !('medecin' in inc.aEcrire),
+    'medecin' in inc.aEcrire ? 'ÉCRIT « ' + inc.aEcrire.medecin + ' »' : 'refusé');
+  v('et il est signalé, pas tu', inc.chirurgienInconnu === 'Dr Jean Dupont'
+    && inc.laisses.some((l) => l.libelle === 'chirurgien' && /aucun médecin/.test(l.pourquoi)));
+
+  const tronque = avec('Dr Anvar');
+  v('patronyme manquant (« Dr Anvar ») : refusé aussi — on ne devine pas un nom',
+    !('medecin' in tronque.aEcrire) && tronque.chirurgienInconnu === 'Dr Anvar');
+
+  const videV = planifierRemontee(doc, fiche(), { engagement: 'engage', medecins: [] });
+  v('vocabulaire VIDE : tout refusé — l\'interdit v1.83 se réimpose seul',
+    !('medecin' in videV.aEcrire) && videV.laisses.some((l) => /v1\.83/.test(l.pourquoi)));
+
+  const occupe = avec('ORKUN UYANIK', { medecin: 'Dr Orkun Uyanik' });
+  v('champ CRM occupé par le même praticien : conforme, pas réécrit',
+    !('medecin' in occupe.aEcrire) && occupe.dejaConformes.includes('chirurgien'));
+
+  const sans = planifierRemontee(doc, fiche(), { engagement: 'engage' });
+  v('sans l\'option (appelant ancien) : comportement d\'avant, mot pour mot',
+    sans.aEcrire.medecin === 'AZAR ZEYNALOV', sans.aEcrire.medecin);
+}
+
 const ko = r.filter(([, ok]) => !ok);
 console.log(`\n=== ${r.length - ko.length}/${r.length} contrôles au vert ===`);
 if (ko.length) console.log('  échecs : ' + ko.map(([n]) => n).join(' · '));

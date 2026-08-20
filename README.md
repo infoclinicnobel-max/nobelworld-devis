@@ -100,6 +100,23 @@ Autres invariants :
   valeur lue>` — si bien que la règle ne vit pas seulement dans le script : rejouer le lot
   n'écrit rien, et un instantané périmé ne peut ni écraser une saisie faite entre-temps ni
   faire reculer un `stade`.
+- **Les factures ont un crayon, et chaque coup de crayon se trace** — décidé par Veys le
+  19 août 2026 : « je fais une facture que je n'arrive pas à modifier… soit elle doit être
+  modifiable, soit elle doit être supprimée ». La suppression était le contournement, pas
+  le besoin (mesuré : 18 devis sur 22 modifiés après création, 2 factures sur 13 — les deux
+  étant des annulations ; le 17 août, retirer une option de 2 000 € est passé par
+  supprimer/refaire, en brûlant F-2026-000024). `FactureEditor` réutilise la page A4
+  éditable des devis (`DevisDoc`), **sans réinjecter les défauts des Paramètres** — une
+  facture émise garde ses textes photographiés. Chaque enregistrement écrit dans
+  `nw_historique` — le canal qui porte déjà les événements de facture — ce qui change,
+  l'ancienne valeur, la nouvelle, sans rien demander (`lib/trace.ts`, recette
+  `scripts/recette-crayon-facture.ts`, scénario du 17 août compris). **La corbeille
+  reste**, sur décision explicite de Veys — ne pas la retirer ni la conditionner. Une
+  facture envoyée demande confirmation avant réécriture ; un total qui passe **sous
+  l'encaissé** se signale sans se refuser — mesuré dans le code : le badge se recalcule
+  depuis les paiements et affiche « Payée », le reste à payer est plancherisé à zéro, et le
+  trop-perçu n'apparaissait nulle part ; l'éditeur et le détail de facture l'affichent
+  désormais en clair.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

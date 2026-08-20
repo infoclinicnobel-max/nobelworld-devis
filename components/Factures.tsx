@@ -3,15 +3,20 @@
 import React, { useState } from 'react';
 import {
   Confirm, Drawer, Empty, Field, Input, Kpi, Modal, Select, StatusBadge, Textarea, useDirtyGuard,
+  useNavOverlay,
 } from './ui';
 import { Ico } from './icons';
 import { DocumentView } from './DocumentView';
+import { DevisDoc, type DocHandlers } from './DevisDoc';
 import { useApp } from './AppContext';
-import { fmtDate, money, todayISO } from '@/lib/format';
+import { arrMove, fmtDate, money, normalizeDate, todayISO, uid } from '@/lib/format';
+import { UNSAVED_MSG } from '@/lib/defaults';
 import { can, estDeMoi, userLabel } from '@/lib/perms';
 import {
-  factPayments, factureStatus, PAY_MODES, patientName, remiseMontant, sumPays, totalOf,
+  devisTotal, factPayments, factureStatus, paidFor, PAY_MODES, patientName, remiseMontant, sumPays,
+  totalAvantRemise, totalOf,
 } from '@/lib/calc';
+import { differencesFacture, messageModificationFacture } from '@/lib/trace';
 import type { DocRecord, Paiement } from '@/lib/types';
 
 /* =========================================================================
@@ -236,6 +241,11 @@ export function FacturesView() {
   const [detail, setDetail] = useState<DocRecord | null>(null);
   const [del, setDel] = useState<DocRecord | null>(null);
   const [create, setCreate] = useState(false);
+  const [editor, setEditor] = useState<DocRecord | null>(null);
+  /* Qui peut créer une facture peut la corriger — il n'existe pas de
+     permission d'édition propre aux factures, et en inventer une pour ce lot
+     élargirait le modèle de droits sans décision. */
+  const canEditFacture = can(user, 'all') || can(user, 'factureCreate');
   const cur = data.parametres.currency || '€';
   const seeAllFact =
     can(user, 'all') || can(user, 'factureCreate') || can(user, 'devisViewAll') ||
@@ -285,6 +295,11 @@ export function FacturesView() {
                       <span className="muted tnum">/ {money(tot, cur)}</span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {canEditFacture && (
+                        <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(f)}>
+                          <Ico.edit size={15} />
+                        </button>
+                      )}
                       {(can(user, 'paymentEdit') || can(user, 'all') || can(user, 'factureCreate')) && (
                         <button className="btn btn-ghost btn-sm" title="Paiements" onClick={() => setDetail(f)}>
                           <Ico.wallet size={15} />
@@ -316,6 +331,7 @@ export function FacturesView() {
         />
       )}
       {detail && <FactureDetail facture={detail} onClose={() => setDetail(null)} />}
+      {editor && <FactureEditor facture={editor} onClose={() => setEditor(null)} />}
       {del && (
         <Confirm
           danger
@@ -348,7 +364,9 @@ export function FactureDetail({ facture, onClose }: { facture: DocRecord; onClos
   const [edit, setEdit] = useState<{ payment?: Paiement; type: string } | null>(null);
   const [del, setDel] = useState<Paiement | null>(null);
   const [viewDoc, setViewDoc] = useState(false);
+  const [editFacture, setEditFacture] = useState(false);
   const canEdit = can(user, 'paymentEdit') || can(user, 'all') || can(user, 'factureCreate');
+  const canCrayon = can(user, 'all') || can(user, 'factureCreate');
   // Coordonnées bancaires : réservées à l'administrateur (ou permission « Modifier les paramètres »)
   const canBank = can(user, 'all') || can(user, 'paramEdit');
   const setStatut = (st: string, msg: string) => save('factures', { ...f, statut: st }, msg);
@@ -381,9 +399,30 @@ export function FactureDetail({ facture, onClose }: { facture: DocRecord; onClos
         <Kpi label="Total paiements" value={money(totPa, cur)} icon={Ico.pay} />
         <Kpi label="Reste à payer" value={money(reste, cur)} tone={reste <= 0 && tot > 0 ? 'ok' : ''} icon={Ico.euro} />
       </div>
+      {/* Le trop-perçu n'apparaissait NULLE PART : « Reste à payer » est
+          plancherisé à zéro et le badge passe à « Payée » dès que l'encaissé
+          atteint le total — un total modifié sous des paiements existants se
+          maquillait donc en dossier réglé. On le dit là où on regarde. */}
+      {tot > 0 && totalPaid > tot && (
+        <div
+          style={{
+            background: '#fdecec', border: '1px solid #f0b6b6', color: '#8a2222',
+            borderRadius: 10, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, marginBottom: 16,
+          }}
+        >
+          ⚠ Encaissé au-delà du total : <b>+{money(totalPaid - tot, cur)}</b> ({money(totalPaid, cur)} reçus
+          pour un total de {money(tot, cur)}). Le badge « Payée » vient des paiements ; ce trop-perçu ne se
+          voit que sur cette ligne.
+        </div>
+      )}
 
       {canEdit && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+          {canCrayon && (
+            <button className="btn btn-sm" onClick={() => setEditFacture(true)}>
+              <Ico.edit size={14} />Modifier la facture
+            </button>
+          )}
           {statut !== 'payee' && f.statut !== 'envoye' && f.statut !== 'annulee' && (
             <button className="btn btn-sm" onClick={() => setStatut('envoye', `a marqué ${f.numero} comme envoyée`)}>
               <Ico.send size={14} />Marquer envoyée
@@ -526,7 +565,323 @@ export function FactureDetail({ facture, onClose }: { facture: DocRecord; onClos
         />
       )}
       {viewDoc && <DocumentView record={f} type="facture" onClose={() => setViewDoc(false)} />}
+      {editFacture && <FactureEditor facture={f} onClose={() => setEditFacture(false)} />}
     </Drawer>
+  );
+}
+
+/* =========================================================================
+   ÉDITEUR DE FACTURE — le crayon, décidé par Veys le 19 août 2026.
+
+   « Je fais une facture que je n'arrive pas à modifier… soit elle doit être
+   modifiable, soit elle doit être supprimée. » La suppression était le
+   contournement, pas le besoin : 18 devis sur 22 modifiés après création,
+   2 factures sur 13 — et les deux sont des annulations. Le 17 août, retirer
+   une option de 2 000 € d'une facture émise est passé par supprimer/refaire,
+   en brûlant le numéro F-2026-000024.
+
+   Même page A4 éditable que les devis (DevisDoc), même forme DocRecord. Deux
+   différences voulues :
+   - AUCUN défaut des Paramètres n'est réinjecté : une facture est un document
+     déjà émis, ses textes photographiés restent tels quels ;
+   - chaque enregistrement TRACE ses changements dans nw_historique — champ,
+     ancienne valeur, nouvelle — sans rien demander (lib/trace.ts). Le jour où
+     une patiente dit « ma facture indiquait 10 500 € », la réponse est à
+     l'écran.
+
+   La corbeille reste : décision explicite de Veys — « on garde supprimer
+   aussi, on ne sait jamais ». Ce fichier ne la conditionne pas.
+   ------------------------------------------------------------------------- */
+export function FactureEditor({ facture, onClose }: { facture: DocRecord; onClose: () => void }) {
+  const { data, user, save, toast } = useApp();
+  const cur = data.parametres.currency || '€';
+  /* La version à jour de la base, pas celle du clic : c'est elle qui sert de
+     référence au diff — la trace compare à ce qui était réellement écrit. */
+  const original = data.factures.find((x) => x.id === facture.id) || facture;
+
+  const buildForm = (d: DocRecord): DocRecord => {
+    const base: DocRecord = { ...d };
+    /* Compat anciens documents (lignes) → actes, comme l'éditeur de devis. */
+    if ((!base.actes || !base.actes.length) && d.lignes && d.lignes.length) {
+      base.actes = d.lignes.map((l) => ({ id: uid('a'), acte: l.desc || '', inclus: '' }));
+      if (!Number(base.forfait)) base.forfait = devisTotal(d);
+    }
+    if (!base.actes || !base.actes.length) base.actes = [{ id: uid('a'), acte: '', inclus: '' }];
+    return base;
+  };
+  const [f, setF] = useState<DocRecord>(() => buildForm(original));
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const marque = (fn: (s: DocRecord) => DocRecord) => { setDirty(true); setF(fn); };
+
+  const closeGuard = () => {
+    if (dirty && !window.confirm(UNSAVED_MSG)) return;
+    onClose();
+  };
+  useNavOverlay(closeGuard);
+
+  const on: DocHandlers = {
+    editable: true,
+    patients: data.patients,
+    paiements: data.paiements,
+    set: (k, v) => marque((s) => ({ ...s, [k]: v })),
+    addActe: () => marque((s) => ({ ...s, actes: [...(s.actes || []), { id: uid('a'), acte: '', inclus: '' }] })),
+    setActe: (id, k, v) =>
+      marque((s) => ({ ...s, actes: (s.actes || []).map((a) => (a.id === id ? { ...a, [k]: v } : a)) })),
+    rmActe: (id) => marque((s) => ({ ...s, actes: (s.actes || []).filter((a) => a.id !== id) })),
+    addInc: () => marque((s) => ({ ...s, inc: [...(s.inc || []), ''] })),
+    setInc: (i, v) => marque((s) => ({ ...s, inc: (s.inc || []).map((x, j) => (j === i ? v : x)) })),
+    rmInc: (i) => marque((s) => ({ ...s, inc: (s.inc || []).filter((_, j) => j !== i) })),
+    moveInc: (from, to) => marque((s) => ({ ...s, inc: arrMove(s.inc, from, to) })),
+    addExc: () => marque((s) => ({ ...s, exc: [...(s.exc || []), ''] })),
+    setExc: (i, v) => marque((s) => ({ ...s, exc: (s.exc || []).map((x, j) => (j === i ? v : x)) })),
+    rmExc: (i) => marque((s) => ({ ...s, exc: (s.exc || []).filter((_, j) => j !== i) })),
+    moveExc: (from, to) => marque((s) => ({ ...s, exc: arrMove(s.exc, from, to) })),
+    addOpt: () =>
+      marque((s) => ({
+        ...s,
+        options: [...(s.options || []), { id: uid('o'), nom: '', detail: '', qty: 1, prix: 0, retenue: false }],
+      })),
+    setOpt: (i, k, v) =>
+      marque((s) => ({ ...s, options: (s.options || []).map((o, j) => (j === i ? { ...o, [k]: v } : o)) })),
+    rmOpt: (i) => marque((s) => ({ ...s, options: (s.options || []).filter((_, j) => j !== i) })),
+    addImp: () => marque((s) => ({ ...s, importantList: [...(s.importantList || []), ''] })),
+    setImp: (i, v) =>
+      marque((s) => ({ ...s, importantList: (s.importantList || []).map((x, j) => (j === i ? v : x)) })),
+    rmImp: (i) => marque((s) => ({ ...s, importantList: (s.importantList || []).filter((_, j) => j !== i) })),
+  };
+
+  const canMoney = can(user, 'all') || can(user, 'montantsEdit');
+  const canRemise = can(user, 'all') || can(user, 'remiseEdit');
+
+  const total = totalOf(f);
+  const paid = paidFor(data.paiements, original.id);
+  const tropPercu = Math.max(0, paid - total);
+  const nomDe = (id: string) => patientName(data.patients.find((p) => p.id === id));
+
+  const enregistrerFacture = async () => {
+    if (saving) return;
+    /* Dates propres et remise normalisée — mêmes règles que l'éditeur de
+       devis. Mais AUCUNE suppression des textes égaux aux Paramètres : une
+       facture émise garde sa photographie. */
+    const payload: DocRecord = { ...f };
+    const cleanD = (v: unknown) => {
+      if (!v) return '';
+      const n = normalizeDate(v);
+      return /^\d{4}-\d{2}-\d{2}$/.test(n) ? n : '';
+    };
+    payload.date = cleanD(payload.date) || todayISO();
+    payload.dateIntervention = cleanD(payload.dateIntervention);
+    payload.validite = cleanD(payload.validite);
+    payload.remiseValeur = Number(payload.remiseValeur) > 0 ? Number(payload.remiseValeur) : 0;
+    payload.remiseType = payload.remiseType === 'pourcent' ? 'pourcent' : 'montant';
+    payload.remiseMotif = String(payload.remiseMotif || '').trim();
+
+    /* La trace se calcule sur ce qui PART, pas sur l'état de l'écran. */
+    const diffs = differencesFacture(original, payload, cur, nomDe);
+    if (!diffs.length) { toast('Aucune modification.'); onClose(); return; }
+
+    /* Une facture envoyée est figée au même titre qu'un devis envoyé : la
+       patiente en détient peut-être une copie. Confirmation, jamais refus. */
+    if (original.statut === 'envoye' && !window.confirm(
+      'Cette facture est envoyée : la patiente en détient peut-être déjà une copie.\n\n' +
+      'Modifier ses montants ou ses textes rendra le document différent de celui qu’elle détient. ' +
+      'La modification sera tracée dans l’historique.\n\n' +
+      'OK = Enregistrer quand même · Annuler = Conserver la version envoyée',
+    )) return;
+
+    /* Le total passe SOUS l'encaissé : on le dit, on ne refuse pas — c'est
+       précisément le cas du 17 août (retirer une option d'une facture déjà
+       payée en partie). Conséquence mesurée dans le code : le badge se
+       recalcule depuis les paiements et affichera « Payée », le reste à payer
+       est plancherisé à zéro, et le trop-perçu ne se voit plus que dans la
+       colonne « Payé / Total » de la liste. */
+    if (total + 0.005 < paid && !window.confirm(
+      `Le total (${money(total, cur)}) passe sous le montant déjà encaissé (${money(paid, cur)}).\n\n` +
+      `La facture s’affichera « Payée » avec un trop-perçu de ${money(paid - total, cur)}, ` +
+      'et le reste à payer restera à zéro. Les paiements enregistrés ne bougent pas.\n\n' +
+      'OK = Enregistrer quand même · Annuler = Revenir à l’édition',
+    )) return;
+
+    setSaving(true);
+    try {
+      await save('factures', payload, messageModificationFacture(payload.numero || '', diffs));
+      toast(`Facture ${payload.numero || ''} mise à jour ✓ — ${diffs.length} changement(s) tracé(s) dans l’historique`);
+      setDirty(false);
+      onClose();
+    } catch (e) {
+      /* ctx.save affiche déjà le détail ; l'éditeur reste ouvert, rien n'est perdu. */
+      console.error('[CN][facture] échec enregistrement', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="editor-overlay">
+      <div className="editor">
+        <div className="editor-top">
+          <button className="btn btn-ghost btn-sm" onClick={closeGuard}><Ico.x size={18} /></button>
+          <h3>Modifier {original.numero || 'la facture'}</h3>
+          <div className="sp" />
+          <button className="btn btn-primary" disabled={saving} onClick={enregistrerFacture}>
+            <Ico.check size={16} />{saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+        <div className="editor-main">
+          <div className="editor-doc">
+            <DevisDoc
+              record={f}
+              settings={data.parametres}
+              patient={data.patients.find((p) => p.id === f.patientId)}
+              type="facture"
+              paid={paid}
+              editable
+              on={on}
+            />
+          </div>
+          <div className="editor-side">
+            {original.statut === 'envoye' && (
+              <div
+                style={{
+                  background: '#fff7e8', border: '1px solid #f0dcae', color: '#7a5d1f',
+                  borderRadius: 10, padding: '9px 12px', fontSize: 12, lineHeight: 1.55, marginBottom: 14,
+                }}
+              >
+                ⚠ Facture envoyée — la patiente en détient peut-être déjà une copie. Toute modification
+                sera <b>tracée dans l&apos;historique</b> avec l&apos;ancienne et la nouvelle valeur.
+              </div>
+            )}
+            <h4>Statut &amp; type</h4>
+            <div className="side-actions">
+              <Select value={f.statut || 'brouillon'} onChange={(e) => on.set('statut', e.target.value)}>
+                <option value="brouillon">Brouillon</option>
+                <option value="envoye">Envoyée</option>
+                <option value="annulee">Annulée</option>
+              </Select>
+              <Select value={f.typeFacture || 'totale'} onChange={(e) => on.set('typeFacture', e.target.value)}>
+                <option value="acompte">Facture d&apos;acompte</option>
+                <option value="solde">Facture de solde</option>
+                <option value="totale">Facture totale</option>
+                <option value="manuelle">Facture manuelle</option>
+              </Select>
+            </div>
+            <h4>Tarification</h4>
+            <Field label="Prix du forfait" hint={cur}>
+              <Input
+                type="number"
+                disabled={!canMoney}
+                title={canMoney ? '' : 'Permission « Modifier les montants » requise'}
+                value={f.forfait ?? 0}
+                onChange={(e) => canMoney && on.set('forfait', Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Remise" hint={f.remiseType === 'pourcent' ? '%' : cur}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input
+                  type="number"
+                  min="0"
+                  style={{ flex: 1 }}
+                  value={f.remiseValeur ?? ''}
+                  placeholder="0"
+                  disabled={!canRemise}
+                  title={canRemise ? '' : 'Permission « Ajouter / modifier une remise » requise'}
+                  onChange={(e) =>
+                    canRemise && on.set('remiseValeur', e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                />
+                <Select
+                  style={{ flex: '0 0 76px', width: 76 }}
+                  disabled={!canRemise}
+                  value={f.remiseType || 'montant'}
+                  onChange={(e) => canRemise && on.set('remiseType', e.target.value)}
+                >
+                  <option value="montant">{cur}</option>
+                  <option value="pourcent">%</option>
+                </Select>
+              </div>
+            </Field>
+            <Field label="Acompte prévu" hint={cur}>
+              <Input
+                type="number"
+                disabled={!canMoney}
+                title={canMoney ? '' : 'Permission « Modifier les montants » requise'}
+                value={f.acompte ?? 0}
+                onChange={(e) => canMoney && on.set('acompte', Number(e.target.value))}
+              />
+            </Field>
+            <div className="reste-box">
+              {remiseMontant(f) > 0 && (
+                <div className="l">
+                  <span>Avant remise</span>
+                  <span className="v tnum">{money(totalAvantRemise(f), cur)}</span>
+                </div>
+              )}
+              {remiseMontant(f) > 0 && (
+                <div className="l">
+                  <span>Remise</span>
+                  <span className="v tnum">-{money(remiseMontant(f), cur)}</span>
+                </div>
+              )}
+              <div className="l">
+                <span>{remiseMontant(f) > 0 ? 'Total après remise' : 'Total'}</span>
+                <span className="v tnum">{money(total, cur)}</span>
+              </div>
+              <div className="l">
+                <span>Encaissé (paiements réels)</span>
+                <span className="v tnum">{money(paid, cur)}</span>
+              </div>
+              <div className="l big">
+                <span>Reste à payer</span>
+                <span className="v tnum">{money(Math.max(0, total - paid), cur)}</span>
+              </div>
+            </div>
+            {tropPercu > 0 && (
+              <div
+                style={{
+                  background: '#fdecec', border: '1px solid #f0b6b6', color: '#8a2222',
+                  borderRadius: 10, padding: '9px 12px', fontSize: 12, lineHeight: 1.55, marginTop: 10,
+                }}
+              >
+                ⚠ Encaissé au-delà du total : <b>+{money(tropPercu, cur)}</b>. La facture s&apos;affichera
+                « Payée » et le reste à payer restera à zéro — ce trop-perçu ne se voit qu&apos;ici et dans la
+                colonne « Payé / Total » de la liste.
+              </div>
+            )}
+            <h4>Ajouts rapides</h4>
+            <div className="side-actions">
+              <button className="btn btn-sm" onClick={on.addActe}><Ico.plus size={14} />Acte / intervention</button>
+              <button className="btn btn-sm" onClick={on.addInc}><Ico.plus size={14} />Prestation incluse</button>
+              <button className="btn btn-sm" onClick={on.addOpt}><Ico.plus size={14} />Option</button>
+            </div>
+            <h4>Notes</h4>
+            <Field label="Note interne" hint="jamais visible sur le PDF">
+              <Input
+                value={f.noteInterne || ''}
+                onChange={(e) => on.set('noteInterne', e.target.value)}
+                placeholder="Optionnel"
+              />
+            </Field>
+            <Field
+              label="Note visible sur la facture"
+              hint="remplace le bloc « Mentions administratives » du PDF"
+            >
+              <Textarea
+                style={{ minHeight: 60 }}
+                value={f.factNotes || ''}
+                onChange={(e) => on.set('factNotes', e.target.value)}
+                placeholder="Optionnel"
+              />
+            </Field>
+            <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '6px 0 0' }}>
+              Actes, options, prestations incluses / exclues et textes se modifient directement{' '}
+              <b>sur le document</b> (cliquez sur le texte). Chaque enregistrement écrit dans
+              l&apos;historique ce qui a changé, avec l&apos;ancienne et la nouvelle valeur.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

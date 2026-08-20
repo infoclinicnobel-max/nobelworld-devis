@@ -295,6 +295,51 @@ export function planifierRemontee(
 }
 
 
+/* ------------------------------------------------------- journal de fiche
+
+   `patients.historique` est le journal de fiche du CRM : un tableau JSON
+   d'entrées {u, date, heure, champ, ancien, nouveau, motif} que le CRM écrit
+   quand une main humaine corrige une fiche (mesuré : « veys », « ceyda »).
+   La remontée écrivait les MÊMES colonnes sans y laisser de ligne — ni
+   auteur, ni horodatage, dans une table sans déclencheur : une écriture y
+   était strictement invisible. Mesuré le 19 août sur sauvegarde_patients_
+   20260819 : Cindy, Diallo et El Acmaoui portaient des champs posés par la
+   remontée en service, et un historique entièrement vide.
+
+   Une entrée PAR COLONNE écrite, comme le CRM. `ancien` est la valeur lue
+   juste avant la décision — presque toujours la chaîne vide (règle « on
+   n'écrit que si vide »), et pour `stade` l'étage quitté.
+
+   Un journal existant ILLISIBLE (pas un tableau JSON) n'est JAMAIS écrasé :
+   on renvoie null, les colonnes partent quand même, le journal reste tel
+   quel. Perdre la trace d'une écriture vaut mieux que détruire celles d'un
+   humain. */
+export interface EntreeJournal {
+  u: string; date: string; heure: string; champ: string;
+  ancien: string; nouveau: string; motif: string;
+}
+
+export function journaliserRemontee(
+  historiqueActuel: unknown,
+  ecrits: Record<string, string>,
+  ancienDe: (colonne: string) => string,
+  signature: { u: string; date: string; heure: string; motif: string },
+): string | null {
+  const colonnes = Object.keys(ecrits);
+  if (!colonnes.length) return null;
+  let arr: unknown = [];
+  const brut = String(historiqueActuel ?? '').trim();
+  if (brut) {
+    try { arr = JSON.parse(brut); } catch { return null; }
+    if (!Array.isArray(arr)) return null;
+  }
+  const entrees: EntreeJournal[] = colonnes.map((c) => ({
+    u: signature.u, date: signature.date, heure: signature.heure,
+    champ: c, ancien: ancienDe(c), nouveau: ecrits[c], motif: signature.motif,
+  }));
+  return JSON.stringify([...(arr as unknown[]), ...entrees]);
+}
+
 /* ---------------------------------------------------------------- moment
 
    À quel statut la remontée part-elle ? La règle « n'écrire que si vide » fait
@@ -362,7 +407,16 @@ export function documentQuiFaitFoi(
    ⚠ Mesuré aussi : 3 paiements sur 12 n'ont PAS de `patient_id`, et ne sont
    rattachables que par `facture_id`. Chercher sur le seul `patient_id` en
    manquerait le quart — exactement le genre d'oubli qui se solde par
-   « c'est toujours vide ». On cherche donc par les deux voies. */
+   « c'est toujours vide ». On cherche donc par les deux voies.
+
+   ⚠ LA FORMULE À GARDER, validée le 19 août : LE DOCUMENT N'ENGAGE PAS,
+   L'ARGENT SI. Un brouillon n'est jamais une source pour le CRM (il n'est pas
+   dans STATUTS_FACTURE_VIVANTE) mais son paiement déclenche l'engagement ici
+   même. Les deux bouts sont VOULUS et se lisent ensemble : F-2026-000011
+   porte 8 570 € encaissés sur un statut `brouillon`, et c'est ce couple de
+   règles qui la traite correctement. Ne pas les « harmoniser » l'un sur
+   l'autre au nom de la cohérence — supprimer l'un des deux casserait soit la
+   hiérarchie des documents, soit le OU de déclenchement. */
 export function aPaye(paiements: Paiement[], patientId: string, idsFactures: string[]): boolean {
   const id = String(patientId || '').trim();
   const factures = new Set(idsFactures.filter(Boolean));

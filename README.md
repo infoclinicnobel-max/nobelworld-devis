@@ -97,6 +97,23 @@ Autres invariants :
   toute fiche passée par un remplacement. `annulationBloqueConfirmation()` dans
   `lib/fiche.ts`, partagée par le flux et le rattrapage ; recette sections 12-15, dont le
   jumeau positif qui prouve que le test négatif échoue pour la bonne raison.
+- **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
+  colonne dans `patients.historique` — le journal de fiche du CRM, format
+  `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —
+  et `updated_at`, que `patients` ne pose pas tout seul (aucun déclencheur). Motif mesuré
+  le 19 août : la remontée en service avait rempli Cindy, Diallo et El Acmaoui sans une
+  ligne de journal ni d'horodatage — des écritures strictement invisibles dans un dossier
+  patient, pendant que le CRM, lui, journalise les corrections humaines. Un journal
+  existant illisible n'est **jamais** écrasé : la trace est perdue, les données partent,
+  le journal reste. `journaliserRemontee()` dans `lib/fiche.ts` ; recette sections 16-17.
+- **La formule à garder : le document n'engage pas, l'argent si.** Un brouillon n'est
+  jamais une source pour le CRM (hors de `STATUTS_FACTURE_VIVANTE`), mais son paiement
+  déclenche l'engagement via `aPaye()`. Les deux bouts sont **voulus** — F-2026-000011
+  porte 8 570 € encaissés sur un statut `brouillon`, et c'est ce couple qui la traite
+  correctement. Ne pas les « harmoniser ». À savoir en la lisant : `factureStatus()`
+  (lib/calc.ts) recalcule le badge depuis les paiements, si bien qu'un brouillon payé
+  s'**affiche** « Payée » alors que le statut stocké reste `brouillon` — l'écran répond
+  « qu'a-t-elle payé ? », la base répond « le document a-t-il été émis ? ».
 - **Le rattrapage des fiches a été passé le 19 août 2026** : **41 champs sur 13 fiches**,
   aucune ligne créée ni supprimée. Sauvegarde préalable dans
   `public.sauvegarde_patients_20260819` — `enable row level security` dans la même
@@ -173,9 +190,23 @@ chemins absolus. Le cache du service worker est passé en `v3`.
 
 ## Déploiement
 
-Le projet Vercel `nobelworld-devis` (équipe Nobel Dent) est relié à ce dépôt. La branche
-`claude/adoring-keller-qi3eez` est déployée en **préproduction** pour la recette du PDF ;
-`main` n'est pas fusionnée tant que cette recette n'est pas validée, afin que GitHub Pages
+⚠️ **Mesuré le 19 août 2026 — la note d'origine ne décrit plus la réalité.**
+
+- **La « préproduction » est devenue la production de fait.** `nw_historique` porte le
+  travail réel de Veys Turan du 17 au 19 août (D-2026-000040 à 43, F-2026-000024 à 26,
+  paiements) : c'est la nouvelle application qui fait tourner l'activité, quelle que soit
+  l'étiquette de son déploiement.
+- **`main` ne porte que l'ancienne application** (`index.html` + Apps Script, servie par
+  GitHub Pages, toujours en ligne) : aucun des commits d'août n'y est. Fusionner vers
+  `main` ne déploie rien tant que le projet Vercel n'y est pas raccordé.
+- **Le projet Vercel n'a pas été retrouvé** depuis la session du 19 août : l'équipe
+  Vercel « Nobel Dent » ne contient que `clinicnobel-next`, et
+  `nobelworld-devis.vercel.app` répond 404. L'URL réellement servie est celle du
+  navigateur de Veys — à relever avant toute décision de fusion ou de bascule.
+
+Note d'origine (10 août, conservée pour mémoire) : le projet Vercel `nobelworld-devis`
+(équipe Nobel Dent) est relié à ce dépôt, branche `claude/adoring-keller-qi3eez` en
+préproduction pour la recette du PDF ; `main` non fusionnée pour que GitHub Pages
 continue de servir l'ancienne application.
 
 ## Session : ce qui la maintient ouverte

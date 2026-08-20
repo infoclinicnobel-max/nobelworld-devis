@@ -91,6 +91,16 @@ export function userLabel(u: Partial<AppUser> | null | undefined): string {
   return n || u.email || '—';
 }
 
+/* Signature pour le journal de fiche du CRM (`patients.historique`) : le CRM y
+   écrit le prénom en minuscules — « veys », « ceyda », mesuré le 19 août. On
+   suit sa convention pour que le journal reste d'une seule écriture ; le
+   libellé complet ne sert que de repli quand la fiche profil n'a pas de
+   prénom. */
+export function signatureJournal(u: Partial<AppUser> | null | undefined): string {
+  const prenom = String(u?.prenom || '').trim().toLowerCase();
+  return prenom || userLabel(u);
+}
+
 /* `nw_devis.cree_par`, `nw_factures.cree_par` et `patients.creePar` portent un nom
    lisible saisi au fil du temps (« Veys Turan », « Andréa Nobel », « andrea », « ib »)
    et non un identifiant stable. Une comparaison stricte ferait disparaître tous les

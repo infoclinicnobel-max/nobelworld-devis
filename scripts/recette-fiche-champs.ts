@@ -9,7 +9,7 @@
 
 import {
   annulationBloqueConfirmation, aPaye, CLE_STADE, CHAMPS_REMONTES, documentQuiFaitFoi,
-  ECHELLE_STADE, niveauEngagement, planifierRemontee,
+  ECHELLE_STADE, journaliserRemontee, niveauEngagement, planifierRemontee,
   rangStade, STADE_CONFIRME, STADE_DEVIS_ENVOYE,
 } from '../lib/fiche';
 import type { DocRecord, Paiement, Patient } from '../lib/types';
@@ -202,6 +202,42 @@ console.log('\n=== 15. La clause aux bornes ===');
   v('aucune facture → ne bloque pas', !annulationBloqueConfirmation([]));
   v('sans la liste (appelant ancien) → ne bloque pas, la remontée reste entière',
     planifierRemontee(doc, fiche(), { engagement: 'engage' }).aEcrire.stade === STADE_CONFIRME);
+}
+
+/* --------------------------------------------------- le journal de fiche
+
+   La remontée en service a écrit Cindy, Diallo et El Acmaoui sans laisser une
+   ligne dans `patients.historique`, pendant que le CRM y journalise les
+   corrections humaines. Désormais la trace part avec l'écriture ; ces
+   contrôles fixent son format — celui des entrées existantes du CRM. */
+console.log('\n=== 16. Le journal de fiche : la remontée laisse une trace ===');
+{
+  const sig = { u: 'veys', date: '2026-08-19', heure: '18:00', motif: 'Remontée automatique du devis D-2026-000040' };
+  /* L'entrée réelle de la fiche Annen, écrite par le CRM le 17 août. */
+  const existant = JSON.stringify([{
+    u: 'veys', date: '2026-08-17', heure: '09:52', champ: 'dateOperation',
+    ancien: '', nouveau: '2026-08-24', motif: 'Demande du patient',
+  }]);
+  const j = journaliserRemontee(existant, { medecin: 'ANVAR AHMEDOV', stade: 'Confirmé' },
+    (c) => (c === 'stade' ? 'Devis envoyé' : ''), sig);
+  const arr = JSON.parse(j || '[]') as Record<string, string>[];
+  v('une entrée PAR colonne écrite, après les existantes', arr.length === 3, String(arr.length));
+  v("l'entrée humaine d'origine est intacte", arr[0]?.motif === 'Demande du patient');
+  const m = arr.find((e) => e.champ === 'medecin');
+  v('champ, ancien, nouveau, auteur, document portés',
+    !!m && m.ancien === '' && m.nouveau === 'ANVAR AHMEDOV' && m.u === 'veys' && /D-2026-000040/.test(m.motif));
+  const s = arr.find((e) => e.champ === 'stade');
+  v("le stade journalise l'étage quitté", !!s && s.ancien === 'Devis envoyé' && s.nouveau === 'Confirmé');
+}
+
+console.log('\n=== 17. Le journal aux bornes : tracer sans jamais détruire ===');
+{
+  const sig = { u: 'veys', date: '2026-08-19', heure: '18:00', motif: 'x' };
+  v('journal vide → tableau créé',
+    (JSON.parse(journaliserRemontee('', { budget: '5600' }, () => '', sig) || '[]') as unknown[]).length === 1);
+  v('rien à écrire → null, pas de ligne vide', journaliserRemontee('', {}, () => '', sig) === null);
+  v('journal ILLISIBLE → null, jamais écrasé', journaliserRemontee('pas du JSON', { budget: '5600' }, () => '', sig) === null);
+  v('JSON mais pas un tableau → null aussi', journaliserRemontee('{"u":"x"}', { budget: '5600' }, () => '', sig) === null);
 }
 
 const ko = r.filter(([, ok]) => !ok);

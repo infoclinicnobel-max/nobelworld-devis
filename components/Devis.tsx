@@ -14,7 +14,7 @@ import { addDays, arrMove, fmtDate, money, normalizeDate, todayISO, uid } from '
 import {
   composeIncExc, DEFAULT_IMPORTANT, DEFAULT_PAIEMENT_NOTE, PDF_TEXTS, settingsImpLines, UNSAVED_MSG,
 } from '@/lib/defaults';
-import { can, estDeMoi, userLabel } from '@/lib/perms';
+import { can, estDeMoi, signatureJournal, userLabel } from '@/lib/perms';
 import { CHAMPS_REMONTES } from '@/lib/fiche';
 import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
 import type { DocRecord, Modele } from '@/lib/types';
@@ -74,7 +74,7 @@ export function DevisView() {
        « on n'écrit que dans un champ vide » rend l'opération rejouable, la
        seconde remontée ne fait rien. Aucune garde supplémentaire n'est utile. */
     try {
-      const r = await remonterVersFiche(fac, 'facture');
+      const r = await remonterVersFiche(fac, 'facture', false, signatureJournal(user));
       const rdv = phraseAgenda(r.agenda);
       if (r.statut === 'ecrit') {
         const noms = Object.keys(r.ecrits)
@@ -607,7 +607,7 @@ export function DevisEditor({
          fois. `forcer` porte le bouton manuel, rien d'autre. */
       {
         try {
-          const r = await remonterVersFiche(saved, 'devis', forcer);
+          const r = await remonterVersFiche(saved, 'devis', forcer, signatureJournal(user));
           /* Le message dit les DEUX moitiés : ce qui est écrit, et ce qui est
              volontairement laissé, avec la raison. Sans la seconde, l'assistante
              clique, voit la date arriver, voit le stade rester en place, et

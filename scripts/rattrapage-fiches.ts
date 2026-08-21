@@ -19,7 +19,8 @@
    Le fichier attendu :
      { "patients": [...lignes patients...],
        "devis":    [...lignes nw_devis...],
-       "factures": [...lignes nw_factures...] } */
+       "factures": [...lignes nw_factures...],
+       "medecins": [...lignes medecins (nomAffiche)...] } */
 
 import { readFileSync } from 'node:fs';
 import { rowToDevis, rowToFacture, rowToPaiement } from '../lib/mappers';
@@ -50,6 +51,15 @@ const parPatient = <T extends DocRecord>(list: T[]) => {
 const devisDe = parPatient(devis);
 const facturesDe = parPatient(factures);
 
+/* Vocabulaire canonique des chirurgiens (règle du chapitre 1). Un instantané
+   qui ne porte pas la table `medecins` donne un vocabulaire VIDE : tout
+   medecin est refusé et listé, jamais recopié brut — c'est le rattrapage du
+   19 août qui a écrit « ANVAR AHMEDOV » sur trois fiches, faute de cette
+   règle dans le code. */
+const vocabulaireMedecins: string[] = (snap.medecins || [])
+  .map((m: Row) => String(m.nomAffiche || '').trim())
+  .filter(Boolean);
+
 /* Un nom de praticien sans patronyme (« Dr Anvar ») ne part jamais dans un
    dossier patient : on le signale au client, on ne devine pas le nom manquant. */
 const patronymeManquant = (v: string) => normaliser(v).split(' ').filter(Boolean).length < 2;
@@ -60,6 +70,8 @@ const aCompleter: string[][] = [];
 const sansSource: string[][] = [];
 /* Une valeur de stade inconnue gèlerait la fiche en silence : on la nomme. */
 const horsEchelle: string[][] = [];
+/* Un chirurgien hors du vocabulaire est REFUSÉ à l'écriture : on le liste. */
+const chirurgiensRefuses: string[][] = [];
 
 /* Ce que `--sql` émettra. `avant` est la valeur LUE dans l'instantané : elle
    devient la condition de l'UPDATE, pas seulement une note. */
@@ -85,8 +97,14 @@ for (const p of patients) {
     sesDevis,
     aPaye(paiements, String(p.id), sesFactures.map((f) => String(f.id || ''))),
   );
-  const plan = planifierRemontee(doc, p as never, { engagement });
+  /* Mêmes clauses que le flux : factures pour l'annulation, medecins pour la
+     traduction — sans elles le rattrapage promeut une affaire morte (Tresor)
+     ou recopie un chirurgien brut (Cindy, Diallo, El Acmaoui). */
+  const plan = planifierRemontee(doc, p as never, {
+    engagement, factures: sesFactures, medecins: vocabulaireMedecins,
+  });
   if (plan.stadeHorsEchelle) horsEchelle.push([nom, plan.stadeHorsEchelle, etiquette]);
+  if (plan.chirurgienInconnu) chirurgiensRefuses.push([nom, plan.chirurgienInconnu, etiquette]);
 
   for (const [colonne, valeur] of Object.entries(plan.aEcrire)) {
     const libelle = CHAMPS_REMONTES.find((c) => c.fiche === colonne)?.libelle || colonne;
@@ -171,4 +189,9 @@ table('NOM TRONQUÉ — à compléter par le client', ['fiche', 'colonne', 'vale
 table('AUCUN DOCUMENT VIVANT', ['fiche', 'raison'], sansSource);
 table('STADE HORS ÉCHELLE — fiche gelée tant que la valeur n\'est pas corrigée',
   ['fiche', 'valeur trouvée', 'document'], horsEchelle);
+table('CHIRURGIEN HORS VOCABULAIRE — refusé, à trancher par le client',
+  ['fiche', 'valeur du document', 'document'], chirurgiensRefuses);
+if (!vocabulaireMedecins.length) {
+  console.log('\n⚠️  L\'instantané ne porte aucune ligne medecins : TOUT chirurgien a été refusé (interdit v1.83).');
+}
 console.log('\nAucune écriture. Ce script lit un instantané JSON et n\'ouvre aucune connexion.');

@@ -87,6 +87,42 @@ Autres invariants :
   valeur du CRM différente n'est jamais écrasée : elle est affichée dans une fenêtre de
   divergence. `UPDATE` ciblé, jamais d'`INSERT` — un devis ne crée jamais une fiche.
   `patients.procedures` (pluriel) et `hopital` restent hors périmètre. Voir `lib/fiche.ts`.
+- **La clause d'annulation conditionne « Confirmé »** : une facture **annulée** rattachée à
+  la patiente, **sans facture vivante qui la remplace**, bloque la promotion du stade — les
+  cinq colonnes de données, elles, continuent de remonter. Motif mesuré : l'annulation se
+  pose sur la facture et ne redescend jamais au devis, qui reste « accepte » pour toujours
+  (F-2026-000009 Tresor, F-2026-000012 Munao — le rattrapage du 19 août, antérieur à la
+  clause, avait promu Tresor à tort). L'exception « facture vivante » est la porte du
+  chantier « annuler et remplacer » : bloquer sur la seule présence d'une annulée gèlerait
+  toute fiche passée par un remplacement. `annulationBloqueConfirmation()` dans
+  `lib/fiche.ts`, partagée par le flux et le rattrapage ; recette sections 12-15, dont le
+  jumeau positif qui prouve que le test négatif échoue pour la bonne raison.
+- **Le chirurgien se traduit, ne se recopie jamais** : quand `patients.medecin` est vide,
+  la remontée écrit la forme canonique (`medecins.nomAffiche`, 4 lignes depuis le 19 août,
+  RLS en lecture pour tout rôle non anonyme) quand la comparaison normalisée aboutit, et
+  **refuse en signalant** sinon — nom inconnu, patronyme manquant (« Dr Anvar »), ou
+  vocabulaire vide/illisible (l'interdit v1.83 se réimpose alors de lui-même). Motif
+  mesuré : la recopie brute a produit « ANVAR AHMEDOV » et « AZAR ZEYNALOV » sur Cindy,
+  Diallo et El Acmaoui les 17-18 août, premières écritures définitives réparées à la main.
+  Pas de filtre sur `medecins.actif` (convention texte posée « au jugé », v1.84).
+  Recette section 18.
+- **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
+  colonne dans `patients.historique` — le journal de fiche du CRM, format
+  `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —
+  et `updated_at`, que `patients` ne pose pas tout seul (aucun déclencheur). Motif mesuré
+  le 19 août : la remontée en service avait rempli Cindy, Diallo et El Acmaoui sans une
+  ligne de journal ni d'horodatage — des écritures strictement invisibles dans un dossier
+  patient, pendant que le CRM, lui, journalise les corrections humaines. Un journal
+  existant illisible n'est **jamais** écrasé : la trace est perdue, les données partent,
+  le journal reste. `journaliserRemontee()` dans `lib/fiche.ts` ; recette sections 16-17.
+- **La formule à garder : le document n'engage pas, l'argent si.** Un brouillon n'est
+  jamais une source pour le CRM (hors de `STATUTS_FACTURE_VIVANTE`), mais son paiement
+  déclenche l'engagement via `aPaye()`. Les deux bouts sont **voulus** — F-2026-000011
+  porte 8 570 € encaissés sur un statut `brouillon`, et c'est ce couple qui la traite
+  correctement. Ne pas les « harmoniser ». À savoir en la lisant : `factureStatus()`
+  (lib/calc.ts) recalcule le badge depuis les paiements, si bien qu'un brouillon payé
+  s'**affiche** « Payée » alors que le statut stocké reste `brouillon` — l'écran répond
+  « qu'a-t-elle payé ? », la base répond « le document a-t-il été émis ? ».
 - **Le rattrapage des fiches a été passé le 19 août 2026** : **41 champs sur 13 fiches**,
   aucune ligne créée ni supprimée. Sauvegarde préalable dans
   `public.sauvegarde_patients_20260819` — `enable row level security` dans la même
@@ -94,7 +130,11 @@ Autres invariants :
   copie serait sinon lisible par `anon`. Le décompte ne vient pas du script mais d'une
   comparaison avec cette sauvegarde ; les **34 autres colonnes** en sont ressorties
   identiques ligne à ligne, `updated_at` compris (il n'y a pas de déclencheur sur
-  `patients`). Le rapport gagne un mode `--sql` qui **imprime** les `UPDATE` au lieu de les
+  `patients`). ⚠️ **Sur les quatre tables `sauvegarde_*` : RLS activé et ZÉRO politique,
+  et ce vide EST la fermeture** — en Postgres, RLS sans politique refuse tout à `anon` et
+  `authenticated`. Une liste de politiques vide n'est pas un oubli à « corriger » : y
+  ajouter une politique permissive ouvrirait d'un coup une copie complète de 68 dossiers
+  patients. Vérifié le 19 août 2026. Le rapport gagne un mode `--sql` qui **imprime** les `UPDATE` au lieu de les
   passer : le fichier n'ouvre toujours aucune connexion, et le SQL est relu avant d'être
   exécuté. **Chaque ordre porte sa propre garde** — `and coalesce("colonne", '') = <la
   valeur lue>` — si bien que la règle ne vit pas seulement dans le script : rejouer le lot
@@ -180,9 +220,23 @@ chemins absolus. Le cache du service worker est passé en `v3`.
 
 ## Déploiement
 
-Le projet Vercel `nobelworld-devis` (équipe Nobel Dent) est relié à ce dépôt. La branche
-`claude/adoring-keller-qi3eez` est déployée en **préproduction** pour la recette du PDF ;
-`main` n'est pas fusionnée tant que cette recette n'est pas validée, afin que GitHub Pages
+⚠️ **Mesuré le 19 août 2026 — la note d'origine ne décrit plus la réalité.**
+
+- **La « préproduction » est devenue la production de fait.** `nw_historique` porte le
+  travail réel de Veys Turan du 17 au 19 août (D-2026-000040 à 43, F-2026-000024 à 26,
+  paiements) : c'est la nouvelle application qui fait tourner l'activité, quelle que soit
+  l'étiquette de son déploiement.
+- **`main` ne porte que l'ancienne application** (`index.html` + Apps Script, servie par
+  GitHub Pages, toujours en ligne) : aucun des commits d'août n'y est. Fusionner vers
+  `main` ne déploie rien tant que le projet Vercel n'y est pas raccordé.
+- **Le projet Vercel n'a pas été retrouvé** depuis la session du 19 août : l'équipe
+  Vercel « Nobel Dent » ne contient que `clinicnobel-next`, et
+  `nobelworld-devis.vercel.app` répond 404. L'URL réellement servie est celle du
+  navigateur de Veys — à relever avant toute décision de fusion ou de bascule.
+
+Note d'origine (10 août, conservée pour mémoire) : le projet Vercel `nobelworld-devis`
+(équipe Nobel Dent) est relié à ce dépôt, branche `claude/adoring-keller-qi3eez` en
+préproduction pour la recette du PDF ; `main` non fusionnée pour que GitHub Pages
 continue de servir l'ancienne application.
 
 ## Session : ce qui la maintient ouverte

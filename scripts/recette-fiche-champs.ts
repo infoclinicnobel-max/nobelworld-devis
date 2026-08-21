@@ -8,7 +8,8 @@
    Usage : npx tsx scripts/recette-fiche-champs.ts */
 
 import {
-  aPaye, CLE_STADE, CHAMPS_REMONTES, ECHELLE_STADE, niveauEngagement, planifierRemontee,
+  annulationBloqueConfirmation, aPaye, CLE_STADE, CHAMPS_REMONTES, documentQuiFaitFoi,
+  ECHELLE_STADE, journaliserRemontee, niveauEngagement, planifierRemontee,
   rangStade, STADE_CONFIRME, STADE_DEVIS_ENVOYE,
 } from '../lib/fiche';
 import type { DocRecord, Paiement, Patient } from '../lib/types';
@@ -148,6 +149,149 @@ console.log('\n=== 11. Le bouton manuel : la donnée, jamais l\'avancement ===')
   v('les cinq colonnes de données sont écrites', Object.keys(p.aEcrire).length === 5,
     Object.keys(p.aEcrire).join(', '));
   v('le stade n\'est PAS écrit sur un brouillon', !('stade' in p.aEcrire));
+}
+
+/* ------------------------------------------------- la clause d'annulation
+
+   Le MÊME montage pour les trois contrôles, et c'est le point : le négatif
+   seul ne prouve rien. Si l'avancement était débranché, « le stade n'a pas
+   bougé » serait vrai aussi — « la garde a retenu » et « rien ne s'est
+   produit » sont indiscernables. Le jumeau positif (13) passe le même chemin
+   — documentQuiFaitFoi, niveauEngagement, planifierRemontee, comme le flux et
+   le rattrapage — et exige l'écriture : il prouve que 12 échoue pour la bonne
+   raison. Les deux se lisent ensemble ou pas du tout. */
+const monter = (stadeFiche: string, statutFacture: string) => {
+  const sesDevis = [{ ...doc, id: 'dev_1', patientId: 'p1', statut: 'accepte' } as DocRecord];
+  const sesFactures = [{ ...doc, id: 'fac_1', patientId: 'p1', statut: statutFacture } as DocRecord];
+  const src = documentQuiFaitFoi(sesDevis, sesFactures);
+  const engagement = niveauEngagement(sesDevis, false);
+  return planifierRemontee(src!.doc, fiche({ stade: stadeFiche }), { engagement, factures: sesFactures });
+};
+
+console.log('\n=== 12. LA CLAUSE — devis accepté, facture ANNULÉE : le stade ne bouge pas ===');
+{
+  const p = monter(STADE_DEVIS_ENVOYE, 'annulee');
+  v('stade N\'EST PAS écrit — le cas Tresor', !('stade' in p.aEcrire),
+    'stade' in p.aEcrire ? 'PROMU à « ' + p.aEcrire.stade + ' »' : 'Devis envoyé conservé');
+  v('et la raison est dite', p.laisses.some((l) => l.libelle === 'stade' && /annulée/.test(l.pourquoi)),
+    p.laisses.map((l) => l.pourquoi).join(' | ') || 'aucune');
+}
+
+console.log('\n=== 13. SON JUMEAU POSITIF — même montage, facture ENVOYÉE : Confirmé ===');
+{
+  const p = monter(STADE_DEVIS_ENVOYE, 'envoye');
+  v('stade = Confirmé — l\'avancement est bien branché', p.aEcrire.stade === STADE_CONFIRME,
+    p.aEcrire.stade ? '« ' + p.aEcrire.stade + ' »' : 'RIEN — le montage n\'appelle rien, le 12 ne prouve rien');
+}
+
+console.log('\n=== 14. JAMAIS EN ARRIÈRE — même montage, fiche « Clôturé ✓ » : rien ne bouge ===');
+{
+  const p = monter('Clôturé ✓', 'envoye');
+  v('stade N\'EST PAS écrit — le cas Munao clôturé', !('stade' in p.aEcrire),
+    'stade' in p.aEcrire ? 'RECULÉ à « ' + p.aEcrire.stade + ' »' : 'Clôturé ✓ conservé');
+}
+
+console.log('\n=== 15. La clause aux bornes ===');
+{
+  const fac = (statut: string) => ({ id: 'f', statut } as DocRecord);
+  v('annulée seule → bloque', annulationBloqueConfirmation([fac('annulee')]));
+  v('annulée + vivante → ne bloque PAS (le futur « annuler et remplacer »)',
+    !annulationBloqueConfirmation([fac('annulee'), fac('envoye')]));
+  v('annulée + brouillon → bloque (un brouillon n\'engage personne)',
+    annulationBloqueConfirmation([fac('annulee'), fac('brouillon')]));
+  v('aucune facture → ne bloque pas', !annulationBloqueConfirmation([]));
+  v('sans la liste (appelant ancien) → ne bloque pas, la remontée reste entière',
+    planifierRemontee(doc, fiche(), { engagement: 'engage' }).aEcrire.stade === STADE_CONFIRME);
+}
+
+/* --------------------------------------------------- le journal de fiche
+
+   La remontée en service a écrit Cindy, Diallo et El Acmaoui sans laisser une
+   ligne dans `patients.historique`, pendant que le CRM y journalise les
+   corrections humaines. Désormais la trace part avec l'écriture ; ces
+   contrôles fixent son format — celui des entrées existantes du CRM. */
+console.log('\n=== 16. Le journal de fiche : la remontée laisse une trace ===');
+{
+  const sig = { u: 'veys', date: '2026-08-19', heure: '18:00', motif: 'Remontée automatique du devis D-2026-000040' };
+  /* L'entrée réelle de la fiche Annen, écrite par le CRM le 17 août. */
+  const existant = JSON.stringify([{
+    u: 'veys', date: '2026-08-17', heure: '09:52', champ: 'dateOperation',
+    ancien: '', nouveau: '2026-08-24', motif: 'Demande du patient',
+  }]);
+  const j = journaliserRemontee(existant, { medecin: 'ANVAR AHMEDOV', stade: 'Confirmé' },
+    (c) => (c === 'stade' ? 'Devis envoyé' : ''), sig);
+  const arr = JSON.parse(j || '[]') as Record<string, string>[];
+  v('une entrée PAR colonne écrite, après les existantes', arr.length === 3, String(arr.length));
+  v("l'entrée humaine d'origine est intacte", arr[0]?.motif === 'Demande du patient');
+  const m = arr.find((e) => e.champ === 'medecin');
+  v('champ, ancien, nouveau, auteur, document portés',
+    !!m && m.ancien === '' && m.nouveau === 'ANVAR AHMEDOV' && m.u === 'veys' && /D-2026-000040/.test(m.motif));
+  const s = arr.find((e) => e.champ === 'stade');
+  v("le stade journalise l'étage quitté", !!s && s.ancien === 'Devis envoyé' && s.nouveau === 'Confirmé');
+}
+
+console.log('\n=== 17. Le journal aux bornes : tracer sans jamais détruire ===');
+{
+  const sig = { u: 'veys', date: '2026-08-19', heure: '18:00', motif: 'x' };
+  v('journal vide → tableau créé',
+    (JSON.parse(journaliserRemontee('', { budget: '5600' }, () => '', sig) || '[]') as unknown[]).length === 1);
+  v('rien à écrire → null, pas de ligne vide', journaliserRemontee('', {}, () => '', sig) === null);
+  v('journal ILLISIBLE → null, jamais écrasé', journaliserRemontee('pas du JSON', { budget: '5600' }, () => '', sig) === null);
+  v('JSON mais pas un tableau → null aussi', journaliserRemontee('{"u":"x"}', { budget: '5600' }, () => '', sig) === null);
+}
+
+/* --------------------------------------------- la traduction du chirurgien
+
+   Règle du chapitre 1, qui a enfin sa cible depuis le 19 août : la table
+   medecins (4 nomAffiche). On écrit la forme canonique quand la comparaison
+   normalisée aboutit, on refuse et on signale sinon. Le négatif (refus) a son
+   jumeau positif (canonique écrit) sur le même montage : sans lui, « rien
+   n'a été écrit » ne distingue pas la garde d'un mécanisme débranché. */
+console.log('\n=== 18. Le chirurgien se TRADUIT, ne se recopie pas ===');
+{
+  const VOCAB = ['Dr Anvar Ahmedov', 'Dr Azar Zeynalov', 'Dr Orkun Uyanik', 'Dr VSC Dental'];
+  const avec = (chirurgien: string, ficheOpts: Record<string, string> = {}) =>
+    planifierRemontee({ ...doc, chirurgien }, fiche(ficheOpts), { engagement: 'engage', medecins: VOCAB });
+
+  const p = avec('AZAR ZEYNALOV');
+  v('« AZAR ZEYNALOV » → « Dr Azar Zeynalov » ÉCRIT — le jumeau positif',
+    p.aEcrire.medecin === 'Dr Azar Zeynalov', p.aEcrire.medecin || 'RIEN');
+  const q = avec('anvar ahmedov');
+  v('casse et « Dr » ignorés à la comparaison, canonique à l\'écriture',
+    q.aEcrire.medecin === 'Dr Anvar Ahmedov', q.aEcrire.medecin || 'RIEN');
+
+  const inc = avec('Dr Jean Dupont');
+  v('inconnu du vocabulaire : REFUSÉ, rien d\'écrit', !('medecin' in inc.aEcrire),
+    'medecin' in inc.aEcrire ? 'ÉCRIT « ' + inc.aEcrire.medecin + ' »' : 'refusé');
+  v('et il est signalé, pas tu', inc.chirurgienInconnu === 'Dr Jean Dupont'
+    && inc.laisses.some((l) => l.libelle === 'chirurgien' && /aucun médecin/.test(l.pourquoi)));
+
+  const tronque = avec('Dr Anvar');
+  v('patronyme manquant (« Dr Anvar ») : refusé aussi — on ne devine pas un nom',
+    !('medecin' in tronque.aEcrire) && tronque.chirurgienInconnu === 'Dr Anvar');
+
+  const videV = planifierRemontee(doc, fiche(), { engagement: 'engage', medecins: [] });
+  v('vocabulaire VIDE : tout refusé — l\'interdit v1.83 se réimpose seul',
+    !('medecin' in videV.aEcrire) && videV.laisses.some((l) => /v1\.83/.test(l.pourquoi)));
+
+  const occupe = avec('ORKUN UYANIK', { medecin: 'Dr Orkun Uyanik' });
+  v('champ CRM occupé par le même praticien : conforme, pas réécrit',
+    !('medecin' in occupe.aEcrire) && occupe.dejaConformes.includes('chirurgien'));
+
+  const sans = planifierRemontee(doc, fiche(), { engagement: 'engage' });
+  v('sans l\'option (appelant ancien) : comportement d\'avant, mot pour mot',
+    sans.aEcrire.medecin === 'AZAR ZEYNALOV', sans.aEcrire.medecin);
+
+  /* La garde des clés vides — le piège vu dans une jointure SQL le 20 août :
+     une chaîne vide s'apparie à une chaîne vide, et la correspondance est
+     FABRIQUÉE au lieu d'être trouvée. Un libellé de pure ponctuation (« ... »)
+     se normalise à vide ; face à un vocabulaire portant une entrée dégénérée
+     (« Pr  » seul se normalise à vide aussi), il ne doit rien épouser. */
+  const degenere = planifierRemontee({ ...doc, chirurgien: '...' }, fiche(),
+    { engagement: 'engage', medecins: ['Pr ', 'Dr Anvar Ahmedov'] });
+  v('clé normalisée à vide : REFUSÉ, jamais apparié à une entrée dégénérée',
+    !('medecin' in degenere.aEcrire) && degenere.chirurgienInconnu === '...',
+    'medecin' in degenere.aEcrire ? 'APPARIÉ à « ' + degenere.aEcrire.medecin + ' »' : 'refusé');
 }
 
 const ko = r.filter(([, ok]) => !ok);

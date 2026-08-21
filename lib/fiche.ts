@@ -158,6 +158,8 @@ export interface PlanRemontee {
   laisses: { libelle: string; pourquoi: string }[];
   /** Valeur de stade hors échelle rencontrée : à porter au rapport. */
   stadeHorsEchelle?: string;
+  /** Chirurgien du document absent du vocabulaire `medecins` : refusé, à dire. */
+  chirurgienInconnu?: string;
 }
 
 /* Trois niveaux, pas deux. Un devis ENVOYÉ parle au CRM, mais pour dire une
@@ -187,20 +189,57 @@ export function normaliser(v: unknown): string {
     .trim();
 }
 
+/* ------------------------------------------------- clause d'annulation
+
+   L'annulation se pose sur la FACTURE et ne remonte jamais au DEVIS : un devis
+   accepté le reste pour toujours, même quand l'affaire est morte. Mesuré : les
+   deux seules factures annulées de la base sont adossées à un devis resté
+   « accepte » — F-2026-000009 (Tresor) et F-2026-000012 (Munao). Le rattrapage
+   du 19 août, qui ne portait pas cette clause, a promu Tresor à « Confirmé »
+   à tort ; elle a été rétablie à la main. Tant que la clause vivait hors du
+   code, ça recommençait à la prochaine annulation.
+
+   La règle du cahier (chapitre 1) : un devis accepté fait passer la fiche à
+   « Confirmé » À CONDITION qu'aucune facture annulée ne lui soit rattachée.
+
+   Une facture VIVANTE lève le blocage, et c'est voulu : le chantier « annuler
+   et remplacer » (décidé le 19 août) laissera la facture fautive en base,
+   marquée annulée, sa remplaçante vivante à côté. Bloquer sur la seule
+   présence d'une annulée gèlerait pour toujours toute fiche passée par un
+   remplacement. L'annulée ne dit « affaire morte » que si rien de vivant ne
+   lui a succédé. Un brouillon ne lève rien : il n'engage personne. */
+export const STATUT_FACTURE_ANNULEE = 'annulee';
+
+export function annulationBloqueConfirmation(factures: DocRecord[]): boolean {
+  const fs = factures || [];
+  return fs.some((f) => String(f.statut || '') === STATUT_FACTURE_ANNULEE)
+    && !fs.some((f) => factureEstVivante(f.statut));
+}
+
 /* Ce que le document écrirait, ce qu'il laisse tel quel, ce qu'il signale.
    UNE seule implémentation pour les devis ET les factures : les deux partagent
    la forme DocRecord, et deux copies divergeraient au premier changement. */
 export function planifierRemontee(
   devis: DocRecord,
   fiche: Patient,
-  opts: { engagement: Engagement; forcerDonnees?: boolean } = { engagement: 'engage' },
+  opts: {
+    engagement: Engagement; forcerDonnees?: boolean; factures?: DocRecord[];
+    /* Vocabulaire canonique des chirurgiens : les `nomAffiche` de la table
+       `medecins` (4 lignes depuis le 19 août, RLS en lecture pour tout rôle
+       non anonyme). ABSENT (undefined), la règle de traduction ne s'applique
+       pas — compatibilité des appelants anciens ; les deux appelants réels la
+       passent toujours. PRÉSENT et vide, tout `medecin` est refusé : c'est
+       l'interdit v1.83, qui se réimpose de lui-même si la table se vide. */
+    medecins?: readonly string[];
+  } = { engagement: 'engage' },
 ): PlanRemontee {
-  const { engagement, forcerDonnees = false } = opts;
+  const { engagement, forcerDonnees = false, factures = [], medecins } = opts;
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
   const laisses: { libelle: string; pourquoi: string }[] = [];
   let stadeHorsEchelle: string | undefined;
+  let chirurgienInconnu: string | undefined;
 
   for (const champ of CHAMPS_REMONTES) {
     const estStade = champ.devis === CLE_STADE;
@@ -225,6 +264,17 @@ export function planifierRemontee(
     if (!valeurDevis) continue;                     // rien à proposer
 
     if (estStade) {
+      /* La clause d'annulation, AVANT la règle ordonnée : un « Confirmé »
+         proposé pour une affaire morte n'est pas un rang à comparer, c'est une
+         proposition qui n'a pas lieu d'être. Et on le DIT — sans cette phrase,
+         l'assistante voit la fiche rester en place et conclut à une panne. */
+      if (valeurDevis === STADE_CONFIRME && annulationBloqueConfirmation(factures)) {
+        laisses.push({
+          libelle: champ.libelle,
+          pourquoi: 'une facture annulée est rattachée à la fiche, sans facture vivante qui la remplace',
+        });
+        continue;
+      }
       /* LA règle ordonnée, et la seule du fichier. Un stade ne monte que d'un
          rang strictement supérieur ; il ne recule jamais. */
       const actuel = rangStade(valeurCrm);
@@ -244,6 +294,38 @@ export function planifierRemontee(
       continue;
     }
 
+    /* ---- medecin : TRADUIT, jamais recopié (règle du chapitre 1) ----
+
+       Quand le champ CRM est vide il n'y a pas de comparaison, il y a une
+       écriture — et elle prenait la valeur du devis telle quelle : c'est
+       ainsi que « ANVAR AHMEDOV » et « AZAR ZEYNALOV » sont entrés bruts sur
+       Cindy, Diallo et El Acmaoui (17-18 août), première écriture définitive.
+       Désormais : on écrit la forme canonique (`medecins.nomAffiche`) quand
+       la comparaison normalisée aboutit, on refuse et on signale sinon. Un
+       nom sans patronyme (« Dr Anvar ») ne correspond à rien : refusé aussi.
+       Une écriture qui recopie sa source propage l'état de sa source ; une
+       écriture qui traduit vers un vocabulaire connu le protège. */
+    if (champ.fiche === 'medecin' && medecins !== undefined && vide(valeurCrm)) {
+      /* Jointure sur cles NON VIDES des deux cotes : un libelle de pure
+         ponctuation se normalise a vide, et une cle vide s'apparierait a toute
+         entree degeneree du vocabulaire — une correspondance FABRIQUEE au lieu
+         d'etre trouvee (garde posee le 20 aout, apres le meme piege dans une
+         jointure SQL). */
+      const cleChirurgien = normaliser(valeurDevis);
+      const canonique = cleChirurgien
+        ? medecins.find((m) => normaliser(m) === cleChirurgien)
+        : undefined;
+      if (canonique) { aEcrire[champ.fiche] = canonique; continue; }
+      chirurgienInconnu = valeurDevis;
+      laisses.push({
+        libelle: champ.libelle,
+        pourquoi: medecins.length
+          ? `« ${valeurDevis} » ne correspond à aucun médecin de la table medecins — refusé et signalé`
+          : "le vocabulaire des médecins est vide ou illisible : on n'écrit pas (interdit v1.83)",
+      });
+      continue;
+    }
+
     /* Les cinq autres : règle stricte, inchangée depuis le premier lot. */
     if (vide(valeurCrm)) { aEcrire[champ.fiche] = valeurDevis; continue; }
     if (normaliser(valeurCrm) === normaliser(valeurDevis)) { dejaConformes.push(champ.libelle); continue; }
@@ -253,9 +335,54 @@ export function planifierRemontee(
     if (champ.silencieux) continue;
     divergences.push({ libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis });
   }
-  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle };
+  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle, chirurgienInconnu };
 }
 
+
+/* ------------------------------------------------------- journal de fiche
+
+   `patients.historique` est le journal de fiche du CRM : un tableau JSON
+   d'entrées {u, date, heure, champ, ancien, nouveau, motif} que le CRM écrit
+   quand une main humaine corrige une fiche (mesuré : « veys », « ceyda »).
+   La remontée écrivait les MÊMES colonnes sans y laisser de ligne — ni
+   auteur, ni horodatage, dans une table sans déclencheur : une écriture y
+   était strictement invisible. Mesuré le 19 août sur sauvegarde_patients_
+   20260819 : Cindy, Diallo et El Acmaoui portaient des champs posés par la
+   remontée en service, et un historique entièrement vide.
+
+   Une entrée PAR COLONNE écrite, comme le CRM. `ancien` est la valeur lue
+   juste avant la décision — presque toujours la chaîne vide (règle « on
+   n'écrit que si vide »), et pour `stade` l'étage quitté.
+
+   Un journal existant ILLISIBLE (pas un tableau JSON) n'est JAMAIS écrasé :
+   on renvoie null, les colonnes partent quand même, le journal reste tel
+   quel. Perdre la trace d'une écriture vaut mieux que détruire celles d'un
+   humain. */
+export interface EntreeJournal {
+  u: string; date: string; heure: string; champ: string;
+  ancien: string; nouveau: string; motif: string;
+}
+
+export function journaliserRemontee(
+  historiqueActuel: unknown,
+  ecrits: Record<string, string>,
+  ancienDe: (colonne: string) => string,
+  signature: { u: string; date: string; heure: string; motif: string },
+): string | null {
+  const colonnes = Object.keys(ecrits);
+  if (!colonnes.length) return null;
+  let arr: unknown = [];
+  const brut = String(historiqueActuel ?? '').trim();
+  if (brut) {
+    try { arr = JSON.parse(brut); } catch { return null; }
+    if (!Array.isArray(arr)) return null;
+  }
+  const entrees: EntreeJournal[] = colonnes.map((c) => ({
+    u: signature.u, date: signature.date, heure: signature.heure,
+    champ: c, ancien: ancienDe(c), nouveau: ecrits[c], motif: signature.motif,
+  }));
+  return JSON.stringify([...(arr as unknown[]), ...entrees]);
+}
 
 /* ---------------------------------------------------------------- moment
 
@@ -324,7 +451,16 @@ export function documentQuiFaitFoi(
    ⚠ Mesuré aussi : 3 paiements sur 12 n'ont PAS de `patient_id`, et ne sont
    rattachables que par `facture_id`. Chercher sur le seul `patient_id` en
    manquerait le quart — exactement le genre d'oubli qui se solde par
-   « c'est toujours vide ». On cherche donc par les deux voies. */
+   « c'est toujours vide ». On cherche donc par les deux voies.
+
+   ⚠ LA FORMULE À GARDER, validée le 19 août : LE DOCUMENT N'ENGAGE PAS,
+   L'ARGENT SI. Un brouillon n'est jamais une source pour le CRM (il n'est pas
+   dans STATUTS_FACTURE_VIVANTE) mais son paiement déclenche l'engagement ici
+   même. Les deux bouts sont VOULUS et se lisent ensemble : F-2026-000011
+   porte 8 570 € encaissés sur un statut `brouillon`, et c'est ce couple de
+   règles qui la traite correctement. Ne pas les « harmoniser » l'un sur
+   l'autre au nom de la cohérence — supprimer l'un des deux casserait soit la
+   hiérarchie des documents, soit le OU de déclenchement. */
 export function aPaye(paiements: Paiement[], patientId: string, idsFactures: string[]): boolean {
   const id = String(patientId || '').trim();
   const factures = new Set(idsFactures.filter(Boolean));

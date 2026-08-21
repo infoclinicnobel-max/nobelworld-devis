@@ -18,7 +18,8 @@ import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } fro
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
 import {
-  aPaye, COLONNES_AUTORISEES, factureEstVivante, niveauEngagement, planifierRemontee,
+  aPaye, COLONNES_AUTORISEES, factureEstVivante, journaliserRemontee, niveauEngagement,
+  planifierRemontee,
   type Engagement,
   type Divergence,
 } from './fiche';
@@ -267,6 +268,10 @@ export async function remonterVersFiche(
   devis: DocRecord,
   source: 'devis' | 'facture' = 'devis',
   forcer = false,
+  /* Signature portée au journal de fiche (« veys », comme les entrées que le
+     CRM y écrit). Vide, le journal dira « nobel-world » : une trace anonyme
+     vaut mieux qu'aucune, mais les appelants DOIVENT passer l'utilisateur. */
+  auteur = '',
 ): Promise<ResultatRemontee> {
   const vide: ResultatRemontee = {
     statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
@@ -276,13 +281,22 @@ export async function remonterVersFiche(
 
   const sb = supabase();
   /* `hopital` n'est PAS une colonne remontée — on ne l'écrit jamais — mais le
-     calendrier la recopie, donc il faut la lire. */
-  const colonnes = ['id', 'prenom', 'nom', 'hopital', ...COLONNES_AUTORISEES].join(',');
-  const [ficheR, devisR, facturesR, paiementsR] = await Promise.all([
+     calendrier la recopie, donc il faut la lire. `historique` est lu pour y
+     APPOSER la trace de l'écriture, jamais pour le réécrire seul. */
+  const colonnes = ['id', 'prenom', 'nom', 'hopital', 'historique', ...COLONNES_AUTORISEES].join(',');
+  const [ficheR, devisR, facturesR, paiementsR, medecinsR] = await Promise.all([
     sb.from('patients').select(colonnes).eq('id', id).maybeSingle(),
     sb.from('nw_devis').select('*').eq('patient_id', id),
     sb.from('nw_factures').select('*').eq('patient_id', id),
     sb.from('nw_paiements').select('*'),
+    /* Vocabulaire canonique des chirurgiens (règle du chapitre 1) : lecture
+       seule, RLS `medecins_read` ouverte à tout rôle non anonyme. Pas de
+       filtre sur `actif` : colonne texte à la convention posée « au jugé »
+       le 19 août (v1.84) — s'y fier viderait le vocabulaire en silence si la
+       convention changeait. En cas d'erreur de lecture, le vocabulaire est
+       VIDE et non absent : tout medecin est alors refusé et dit (v1.83),
+       jamais recopié brut. */
+    sb.from('medecins').select('nomAffiche'),
   ]);
   if (ficheR.error) throw new Error('Fiche patiente illisible : ' + ficheR.error.message);
   if (!ficheR.data) return { ...vide, statut: 'fiche-introuvable' };
@@ -329,7 +343,21 @@ export async function remonterVersFiche(
 
   const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
-  const plan = planifierRemontee(devis, f as never, { engagement, forcerDonnees: forcer });
+  if (medecinsR.error) {
+    console.warn('[CN][fiche] table medecins illisible — tout chirurgien sera refusé :', medecinsR.error.message);
+  }
+  const vocabulaireMedecins = (medecinsR.data || [])
+    .map((m: { nomAffiche?: unknown }) => String(m.nomAffiche || '').trim())
+    .filter(Boolean);
+
+  /* Les factures partent avec le plan : la clause d'annulation en a besoin
+     pour refuser « Confirmé » à une affaire morte (facture annulée sans
+     remplaçante vivante). Les médecins aussi : la règle du chapitre 1 écrit
+     la forme canonique ou refuse, jamais la valeur brute du devis. */
+  const plan = planifierRemontee(devis, f as never, {
+    engagement, forcerDonnees: forcer, factures: facturesDeLaPatiente,
+    medecins: vocabulaireMedecins,
+  });
   const base = {
     patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes, laisses: plan.laisses,
   };
@@ -342,7 +370,29 @@ export async function remonterVersFiche(
     if (interdite) {
       throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
     }
-    const { error: err2 } = await sb.from('patients').update(plan.aEcrire).eq('id', id);
+    /* La TRACE part dans le MÊME update que les données — jamais après coup :
+       `patients` n'a aucun déclencheur, une écriture qui ne pose ni journal ni
+       updated_at est strictement invisible. Mesuré le 19 août : la remontée en
+       service avait rempli Cindy, Diallo et El Acmaoui en laissant leur
+       historique entièrement vide, pendant que le CRM, lui, journalise les
+       corrections humaines. Deux clés s'ajoutent donc ici, et deux seulement :
+       `historique` (une entrée par colonne, auteur + horodatage + document
+       source) et `updated_at` — la donnée, elle, reste bornée par la liste
+       blanche contrôlée ci-dessus. */
+    const quand = new Date();
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const journal = journaliserRemontee(
+      f.historique, plan.aEcrire, (c) => String(f[c] ?? ''),
+      {
+        u: auteur || 'nobel-world',
+        date: `${quand.getFullYear()}-${p2(quand.getMonth() + 1)}-${p2(quand.getDate())}`,
+        heure: `${p2(quand.getHours())}:${p2(quand.getMinutes())}`,
+        motif: `Remontée automatique ${source === 'facture' ? 'de la facture' : 'du devis'} ${devis.numero || ''}`.trim(),
+      },
+    );
+    const payload: Record<string, string> = { ...plan.aEcrire, updated_at: quand.toISOString() };
+    if (journal !== null) payload.historique = journal;
+    const { error: err2 } = await sb.from('patients').update(payload).eq('id', id);
     if (err2) throw new Error('Report vers la fiche impossible : ' + err2.message);
   }
 

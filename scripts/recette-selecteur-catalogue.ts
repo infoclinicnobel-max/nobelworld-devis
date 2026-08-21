@@ -3,8 +3,12 @@
    Trois fonctions pures : la clé de comparaison (cleLibelle), la
    reconnaissance d'un libellé (resoudreLibelle), la recherche étendue aux
    libellés d'usage (filtrerModeles + correspondances), plus le nettoyage des
-   lignes d'acte vides (nettoyerActes). Les cas sont les cas RÉELS mesurés le
-   20 août sur les 22 devis — pas des cas d'école.
+   lignes d'acte vides (nettoyerActes). Les LIBELLÉS sont les cas réels mesurés
+   le 20 août sur les 22 devis ; les CIBLES des correspondances sont un banc
+   synthétique — la vraie table vit en base et bouge (le 21 août, « Liposuccion
+   1 zone » a été repointée de sup-zone-liposuccion vers alc-lipo-1-zone).
+   Citer une fixture comme un relevé est exactement l'erreur commise le 21 : un
+   banc éprouve un mécanisme, il ne décrit jamais la base.
 
    Le point sous garde : les correspondances « a_verifier » ne nourrissent
    JAMAIS la recherche — un tarif engagé sans relecture. Le jumeau positif :
@@ -37,7 +41,7 @@ const MODELES: Modele[] = [
 const CORRESP: Correspondance[] = [
   { libelle: 'SAFE BBL', catalogueId: 'cat-bbl-seul', statut: 'valide' },
   { libelle: 'Fox Eyes', catalogueId: 'cat-fox-eyes', statut: 'valide' },
-  { libelle: 'Liposuccion 1 zone', catalogueId: 'alc-lipo-vaser-360-seule', statut: 'a_verifier' },
+  { libelle: 'Liposuccion 1 zone', catalogueId: 'alc-lipo-vaser-360-seule', statut: 'a_verifier' }, // cible SYNTHÉTIQUE
   { libelle: 'Ancien libellé perdu', catalogueId: null, statut: 'sans_correspondance' },
 ];
 

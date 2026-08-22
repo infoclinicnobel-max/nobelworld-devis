@@ -137,7 +137,11 @@ export function FactureCreateModal({
             const p = data.patients.find((x) => x.id === d.patientId);
             return (
               <option key={d.id} value={d.id}>
+                {/* Un devis classé reste facturable — une patiente qui change
+                    d'avis ne repart pas de zéro — mais la mention empêche de
+                    le faire par inadvertance. */}
                 {d.numero} — {patientName(p)} — {money(totalOf(d), cur)}
+                {d.statut === 'refuse' ? ' (refusé)' : d.statut === 'expire' ? ' (expiré)' : ''}
               </option>
             );
           })}

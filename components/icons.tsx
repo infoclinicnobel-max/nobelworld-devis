@@ -37,6 +37,7 @@ export const Ico = {
   plus: I(<><path d="M12 5v14M5 12h14"/></>),
   menu: I(<><path d="M3 6h18M3 12h18M3 18h18"/></>),
   x: I(<><path d="M18 6 6 18M6 6l12 12"/></>),
+  hourglass: I(<><path d="M6 2h12M6 22h12"/><path d="M8 2v4l4 5 4-5V2"/><path d="M8 22v-4l4-5 4 5v4"/></>),
   chevron: I(<><path d="m9 18 6-6-6-6"/></>),
   pdf: I(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h1.5a1.5 1.5 0 0 0 0-3H9v6"/></>),
   print: I(<><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></>),

@@ -16,7 +16,10 @@ import {
 } from '@/lib/defaults';
 import { can, estDeMoi, signatureJournal, userLabel } from '@/lib/perms';
 import { CHAMPS_REMONTES } from '@/lib/fiche';
-import { devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf } from '@/lib/calc';
+import {
+  devisEstClasse, devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf,
+  validiteDepassee,
+} from '@/lib/calc';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -33,9 +36,23 @@ export function DevisView() {
   const [filter, setFilter] = useState('tous');
   const seeAllDevis = can(user, 'all') || can(user, 'devisViewAll');
   let list = seeAllDevis ? data.devis : data.devis.filter((d) => estDeMoi(user, d.createdBy));
-  if (filter !== 'tous') list = list.filter((d) => d.statut === filter);
+  /* « Classés » rassemble refusés et expirés — la « rubrique » de Veys, au
+     singulier. Le badge distingue les deux ; « Tous » reste tous : rien ne
+     disparaît de la liste. */
+  if (filter === 'classes') list = list.filter((d) => devisEstClasse(d.statut));
+  else if (filter !== 'tous') list = list.filter((d) => d.statut === filter);
   list = [...list].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const cur = data.parametres.currency || '€';
+  const aujourdhui = todayISO();
+
+  /* Classement à un clic, TRACÉ — jamais automatique : `validite` porte dix
+     durées saisies à la main, et le devis le plus ancien de la base (28 mars,
+     validité étirée au 21 août) est accepté, facturé, opéré. Réversible par
+     « Réactiver », tracé aussi. */
+  const classer = async (d: DocRecord, statut: string, geste: string) => {
+    await save('devis', { ...d, statut }, `a ${geste} le devis ${d.numero}`);
+    toast(`Devis ${d.numero} : ${geste}`);
+  };
 
   const duplicate = async (d: DocRecord) => {
     const numero = await nextNumber('devis');
@@ -108,11 +125,13 @@ export function DevisView() {
         </div>
         <div className="sp" />
         <div className="seg">
-          {['tous', 'brouillon', 'envoye', 'accepte'].map((k) => (
+          {['tous', 'brouillon', 'envoye', 'accepte', 'classes'].map((k) => (
             <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
               {k === 'tous'
                 ? 'Tous'
-                : ({ brouillon: 'Brouillons', envoye: 'Envoyés', accepte: 'Acceptés' } as Record<string, string>)[k]}
+                : ({
+                  brouillon: 'Brouillons', envoye: 'Envoyés', accepte: 'Acceptés', classes: 'Classés',
+                } as Record<string, string>)[k]}
             </button>
           ))}
         </div>
@@ -143,9 +162,43 @@ export function DevisView() {
                     <td>{patientName(p)}</td>
                     <td className="muted">{fmtDate(d.date)}</td>
                     <td className="muted">{d.dateIntervention ? fmtDate(d.dateIntervention) : '—'}</td>
-                    <td><StatusBadge s={d.statut} /></td>
+                    <td>
+                      <StatusBadge s={d.statut} doc="devis" />
+                      {/* Calculé à l'affichage, statut stocké intact : l'écran
+                          dit ce qu'il sait, il ne reclasse jamais. */}
+                      {validiteDepassee(d, aujourdhui) && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>validité dépassée</div>
+                      )}
+                    </td>
                     <td className="tnum t-strong" style={{ textAlign: 'right' }}>{money(totalOf(d), cur)}</td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {canEdit && d.statut === 'envoye' && (
+                        <>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Marquer refusé — la patiente a dit non"
+                            onClick={() => classer(d, 'refuse', 'marqué refusé')}
+                          >
+                            <Ico.x size={15} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Classer expiré — sans réponse, classé sans suite"
+                            onClick={() => classer(d, 'expire', 'classé expiré')}
+                          >
+                            <Ico.hourglass size={15} />
+                          </button>
+                        </>
+                      )}
+                      {canEdit && devisEstClasse(d.statut) && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Réactiver — retour à « Envoyé »"
+                          onClick={() => classer(d, 'envoye', 'réactivé')}
+                        >
+                          <Ico.check size={15} />
+                        </button>
+                      )}
                       {canEdit && (
                         <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(d)}>
                           <Ico.edit size={15} />
@@ -318,6 +371,13 @@ function RapportFiche({
     </Modal>
   );
 }
+
+/* Libellés des statuts figés, pour l'avertissement de réécriture. Un statut
+   inconnu retombe sur « envoyé » : mieux vaut un avertissement approximatif
+   qu'un avertissement absent sur un document parti. */
+const LIBELLE_FIGE: Record<string, string> = {
+  accepte: 'accepté', envoye: 'envoyé', refuse: 'refusé', expire: 'expiré',
+};
 
 /* =========================================================================
    ÉDITEUR DE DEVIS (WYSIWYG — page A4 éditable au clic)
@@ -582,9 +642,9 @@ export function DevisEditor({
 
   const finish = async (statut: string | null, preview: boolean, forcer = false) => {
     if (saving) return; // anti double-clic
-    // Un devis envoyé ou accepté est figé : on ne le réécrit jamais sans confirmation explicite.
+    // Un devis envoyé, accepté ou classé est figé : jamais réécrit sans confirmation explicite.
     if (isEdit && estFige(curDevis) && dirty) {
-      const st = curDevis.statut === 'accepte' ? 'accepté' : 'envoyé';
+      const st = LIBELLE_FIGE[String(curDevis.statut || '')] || 'envoyé';
       if (
         !window.confirm(
           `Ce devis est ${st} : la patiente en a peut-être déjà reçu une copie.\n\n` +
@@ -690,8 +750,8 @@ export function DevisEditor({
                   borderRadius: 10, padding: '9px 12px', fontSize: 12, lineHeight: 1.55, marginBottom: 14,
                 }}
               >
-                ⚠ Devis {curDevis.statut === 'accepte' ? 'accepté' : 'envoyé'} — la patiente en détient peut-être
-                déjà une copie. Préférez une <b>duplication</b> plutôt qu&apos;une réécriture.
+                ⚠ Devis {LIBELLE_FIGE[String(curDevis.statut || '')] || 'envoyé'} — la patiente en détient
+                peut-être déjà une copie. Préférez une <b>duplication</b> plutôt qu&apos;une réécriture.
               </div>
             )}
             <h4>Patient &amp; statut</h4>
@@ -711,6 +771,8 @@ export function DevisEditor({
                 <option value="brouillon">Brouillon</option>
                 <option value="envoye">Envoyé</option>
                 <option value="accepte">Accepté</option>
+                <option value="refuse">Refusé</option>
+                <option value="expire">Expiré</option>
               </Select>
             </div>
             <h4>Modèle de devis</h4>

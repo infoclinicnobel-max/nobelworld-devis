@@ -157,6 +157,23 @@ Autres invariants :
   depuis les paiements et affiche « Payée », le reste à payer est plancherisé à zéro, et le
   trop-perçu n'apparaissait nulle part ; l'éditeur et le détail de facture l'affichent
   désormais en clair.
+- **Les devis ont deux états « classés » — `refuse` et `expire` — et une rubrique, pas une
+  corbeille.** Décidé par Veys le 19 août 2026 : « on ne les fait pas disparaître, on fait
+  une rubrique pour dire ces devis, ils sont en attente ». Un refusé ou un sans-réponse
+  restait éternellement « envoyé ». Deux états et **pas plus** : « en attente » est ce que
+  « envoyé » veut déjà dire — la rubrique est le filtre « Classés », qui les rassemble
+  (le badge les distingue) ; « Tous » reste tous. Transitions **manuelles et tracées**
+  (`a marqué le devis D-… comme refusé` dans `nw_historique`), réversibles par
+  « Réactiver » — **jamais automatiques** : `validite` porte dix durées saisies à la main
+  (8 à 146 jours) et D-2026-000037, devis du 28 mars accepté/facturé/opéré, aurait été tué
+  par toute expiration calculée. L'écran **dit** « validité dépassée » sur un envoyé
+  (`validiteDepassee`, calculée à l'affichage) mais ne reclasse rien. Un classé est
+  **figé** (`estFige`), ne remonte rien, ne fait jamais foi et ne propose aucun stade —
+  comportements **prouvés** par `scripts/recette-statuts-devis.ts` (jumeaux positifs sur le
+  même montage : ces comparaisons strictes étaient justes par accident, la recette rougit
+  si un refactor les assouplit). Un classé reste **facturable**, avec la mention
+  « (refusé) / (expiré) » dans le sélecteur — une patiente qui change d'avis ne repart pas
+  de zéro. La corbeille n'est ni retirée ni conditionnée.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

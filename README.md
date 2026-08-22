@@ -191,6 +191,34 @@ Autres invariants :
   l'enregistrement (`nettoyerActes` — deux devis émis en portaient une) ; rien de
   rétroactif. La Bibliothèque affiche le compte des correspondances en attente de
   relecture — une ligne, pas de bouton « tout valider », ni maintenant ni jamais.
+- **Choisir un acte remplit les prestations depuis le catalogue — à la sélection, sans
+  jamais écraser une main.** Décidé par Veys le 22 août 2026, la donnée étant prête : 79
+  lignes, toutes avec `inclusions` / `exclusions`, réécrites en formulation patiente le
+  même jour — et rien ne les lisait. Trois règles, dans `lib/catalogue.ts`
+  (`remplirPrestations`) : ① les **services** (consultation, analyses, anesthésie,
+  transferts, traductrice, corset, bas de contention, suivi) s'unissent d'un acte à l'autre
+  **sans doublon**, par la clé du sélecteur (casse, accents, espaces effacés) ; ② les
+  **nuits** (« 2 nuits en clinique », « 4 nuits d'hôtel 5★ ») viennent du **plus long**
+  acte du devis (`duree_sejour_jours`) et de lui seul, quel que soit l'ordre de sélection —
+  ex æquo : le premier du devis garde la main ; sans durée au catalogue, **aucune nuit**
+  (la ligne alopécie porte deux lignes de nuits *sans nombre*, recopiées d'un gabarit :
+  défaut de donnée signalé au CRM, neutralisé ici) ; ③ le remplissage se déclenche **à la
+  sélection seulement** et ne remplace que le vocabulaire du système — défauts des
+  Paramètres, lignes du catalogue : une ligne écrite par une main reste mot pour mot, et
+  rien n'est jamais **retiré** (une ligne de trop se supprime à la main, comme avant). Une
+  liste encore égale aux défauts (devis neuf) est remplacée franchement — c'est l'ancien
+  « Appliquer un modèle », conservé ; une liste retouchée n'est que complétée. Une seule
+  règle pour la ligne d'acte et le panneau « modèle » (`acteDepuisModele`) ; les options ne
+  remplissent rien ; aucun effet à la réouverture. Recette
+  `scripts/recette-remplissage-prestations.ts` : jumeaux sur l'ordre de sélection, sur la
+  main contre le système, sur les `a_verifier`, plus une garde de source. ⚠ Conséquence
+  littérale à arbitrer par Veys : sleeve (4 j, 2 nuits de clinique) + rhinoplastie (6 j,
+  1 nuit) → les nuits de la rhinoplastie ; l'alternative « maximum par nature » n'est pas
+  construite. Les 15 lignes du catalogue qui n'ont pas la formulation du 22 août (Allurion,
+  alopécie, « Liposuccion 1 zone », le dentaire) se cumulent avec la nouvelle sans se
+  reconnaître (« anesthésie » et « anesthésie générale ») — à aligner côté CRM, pas ici.
+  Effet sur la charge utile : `nw_devis.contenu.inc` / `.exc`, à l'enregistrement humain
+  seulement — aucun écrivain nouveau, aucune table nouvelle, rien de rétroactif.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

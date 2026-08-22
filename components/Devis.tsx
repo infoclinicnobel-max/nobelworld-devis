@@ -20,7 +20,7 @@ import {
   devisEstClasse, devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf,
   validiteDepassee,
 } from '@/lib/calc';
-import { nettoyerActes } from '@/lib/catalogue';
+import { modelesDesActes, nettoyerActes, remplirPrestations, type Remplissage } from '@/lib/catalogue';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -497,24 +497,51 @@ export function DevisEditor({
      catalogue évolue. */
   const descriptionDe = (m: Modele) => (typeof m.description === 'string' ? m.description : '');
 
-  const signaler = (m: Modele, description: string) => {
+  /* Le toast DIT ce qui a été fait aux prestations — il ne décide de rien. */
+  const signaler = (m: Modele, description: string, prestations?: Remplissage) => {
     const alertes: string[] = [];
     if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
     if (!description.trim()) alertes.push('aucune description au catalogue, à rédiger à la main');
-    toast('Modèle appliqué : ' + m.nom + (alertes.length ? ' — ' + alertes.join(' ; ') : ''));
+    const faits: string[] = [];
+    if (prestations) {
+      const n = prestations.ajoutees.length;
+      if (n) faits.push(`${n} prestation${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''}`);
+      if (prestations.remplacees.length && prestations.nuitsDe) {
+        faits.push(`nuits alignées sur « ${prestations.nuitsDe.nom} »`);
+      }
+      if (!faits.length) faits.push('prestations déjà à jour');
+    }
+    toast(
+      'Modèle appliqué : ' + m.nom
+        + (faits.length ? ' — ' + faits.join(', ') : '')
+        + (alertes.length ? ' — ' + alertes.join(' ; ') : ''),
+    );
   };
 
+  /* L'acte s'écrit ici — depuis le sélecteur d'une ligne comme depuis le panneau
+     « Appliquer un modèle » — et les prestations incluses / non incluses se
+     remplissent avec lui, depuis le catalogue : une seule règle, à la SÉLECTION
+     seulement (jamais à la réouverture d'un devis, jamais par effet). Le calcul
+     part de l'état courant : les actes d'après la sélection, résolus au
+     catalogue (égalité ou correspondance valide — une « a_verifier » ne remplit
+     rien), puis la fusion de lib/catalogue.ts décide. Les listes restent
+     éditables ligne à ligne ; ce qu'une main a écrit n'est jamais écrasé, rien
+     n'est jamais retiré. */
   const acteDepuisModele = (m: Modele) => {
     const description = descriptionDe(m);
-    setF((s) => {
-      const actes = [...(s.actes || [])];
-      const vide = actes.findIndex((a) => !String(a.acte || '').trim() && !String(a.inclus || '').trim());
-      const ligne = { id: vide >= 0 ? actes[vide].id : uid('a'), acte: m.nom, inclus: description };
-      if (vide >= 0) actes[vide] = ligne;
-      else actes.push(ligne);
-      return { ...s, actes };
-    });
-    signaler(m, description);
+    const actes = [...(f.actes || [])];
+    const vide = actes.findIndex((a) => !String(a.acte || '').trim() && !String(a.inclus || '').trim());
+    const ligne = { id: vide >= 0 ? actes[vide].id : uid('a'), acte: m.nom, inclus: description };
+    if (vide >= 0) actes[vide] = ligne;
+    else actes.push(ligne);
+    const prestations = remplirPrestations(
+      f,
+      modelesDesActes(actes, data.modeles, data.correspondances),
+      m,
+      { modeles: data.modeles, defauts: composeIncExc(data.parametres) },
+    );
+    setF((s) => ({ ...s, actes, inc: prestations.inc, exc: prestations.exc }));
+    signaler(m, description, prestations);
   };
 
   const optDepuisModele = (m: Modele) => {
@@ -581,17 +608,13 @@ export function DevisEditor({
     rmImp: (i) => setF((s) => ({ ...s, importantList: (s.importantList || []).filter((_, j) => j !== i) })),
   };
 
-  /* Modèle appliqué au DEVIS ENTIER depuis le panneau latéral : il porte, en
-     plus de l'acte, les prestations incluses / exclues et le forfait. L'écriture
-     de l'acte passe par acteDepuisModele — une seule règle, pas deux. */
+  /* Modèle appliqué au DEVIS ENTIER depuis le panneau latéral : il porte en plus
+     l'identifiant du modèle et le forfait. Les prestations incluses / non
+     incluses ne se décident plus ici : l'acte ET les prestations passent par
+     acteDepuisModele — une seule règle, pas deux (garde de source dans
+     scripts/recette-remplissage-prestations.ts). */
   const applyModele = (m: Modele) => {
-    setF((s) => ({
-      ...s,
-      modeleId: m.id,
-      inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
-      exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
-      forfait: Number(s.forfait) || m.prixBase,
-    }));
+    setF((s) => ({ ...s, modeleId: m.id, forfait: Number(s.forfait) || m.prixBase }));
     acteDepuisModele(m);
   };
 

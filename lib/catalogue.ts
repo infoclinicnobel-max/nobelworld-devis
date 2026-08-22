@@ -188,3 +188,171 @@ export function detecterAmbiguites(modeles: Modele[], recherche: string): Ambigu
     .map(([terme, lignes]) => ({ terme, lignes: [...lignes].sort(parNom) }))
     .sort((a, b) => a.terme.localeCompare(b.terme, 'fr'));
 }
+
+/* ------------------------------------------- remplissage des prestations
+
+   Décidé par Veys le 22 août 2026 : choisir un acte au sélecteur remplit les
+   prestations incluses / non incluses depuis le catalogue. La donnée était là
+   — 79 lignes, toutes avec `inclusions` et `exclusions`, réécrites en
+   formulation patiente le 22 août — et rien ne la lisait. Trois règles, pas
+   une de plus :
+
+   ① SERVICES — consultation, analyses, anesthésie, transferts, traductrice,
+      corset, bas de contention, suivi… — s'UNISSENT d'un acte à l'autre, sans
+      doublon : la clé de comparaison est celle du sélecteur (cleLibelle —
+      casse, accents, espaces). Une ligne déjà là ne s'ajoute pas une seconde
+      fois ; une ligne absente s'ajoute à la fin, dans l'ordre du catalogue.
+   ② NUITS — « 2 nuits en clinique », « 4 nuits d'hôtel 5★ » — viennent d'UN
+      SEUL acte : le plus long du devis (duree_sejour_jours). Deux actes ne
+      s'additionnent pas en nuits : la patiente fait un séjour, pas deux. Sans
+      durée au catalogue, pas de nuits — rien n'est deviné.
+   ③ Le remplissage se déclenche à la SÉLECTION seulement, et n'écrase jamais
+      ce qu'une main a écrit. Ce que le système a écrit lui-même — les défauts
+      des Paramètres, le vocabulaire du catalogue — il peut le remplacer ; ce
+      qu'il ne reconnaît pas, il le laisse. Il ne RETIRE jamais rien : une
+      ligne de trop se supprime à la main, comme avant.
+
+   Conséquence : une liste encore égale aux défauts des Paramètres (devis neuf,
+   rien touché) ou vide est remplacée franchement par le catalogue — c'est le
+   comportement d'« Appliquer un modèle » d'avant ce lot, conservé. Une liste
+   retouchée n'est que complétée. La recette
+   scripts/recette-remplissage-prestations.ts rougit si l'une des trois règles
+   s'assouplit. */
+
+export type NatureLigne = 'clinique' | 'hotel' | 'service';
+
+/** Ce qu'une ligne de prestation est : une nuit en clinique, une nuit d'hôtel, ou un service. */
+export function natureLigne(ligne: unknown): NatureLigne {
+  const cle = cleLibelle(ligne);
+  if (!/\bnuits?\b/.test(cle)) return 'service';
+  if (/\b(clinique|hopital|hospitalisation)\b/.test(cle)) return 'clinique';
+  if (/\bhotel\b/.test(cle)) return 'hotel';
+  return 'service';
+}
+
+const NATURES_NUIT: NatureLigne[] = ['clinique', 'hotel'];
+
+/** Durée de séjour d'un modèle, pour désigner « le plus long » ; -1 quand le catalogue n'en porte pas. */
+const dureeDe = (m: Modele): number => m.dureeJours ?? m.dureeNuits ?? -1;
+
+/* Le plus long des actes résolus. Ex æquo : le PREMIER du devis garde la main —
+   ajouter un second acte de même durée ne fait pas basculer les nuits. Aucune
+   durée nulle part → aucun acte ne fait foi. */
+export function acteLePlusLong(actes: Modele[]): Modele | undefined {
+  let meilleur: Modele | undefined;
+  for (const m of actes) {
+    if (dureeDe(m) >= 0 && (!meilleur || dureeDe(m) > dureeDe(meilleur))) meilleur = m;
+  }
+  return meilleur;
+}
+
+/* Les modèles qu'un devis désigne par ses lignes d'acte : égalité avec le
+   catalogue ou correspondance « valide » — jamais une « a_verifier » (un tarif
+   engagé sans relecture ne remplit rien non plus), jamais un libellé inconnu.
+   Un même modèle cité deux fois compte une fois. */
+export function modelesDesActes(
+  actes: Acte[] | undefined, modeles: Modele[], correspondances?: Correspondance[],
+): Modele[] {
+  const vus = new Set<string>();
+  const out: Modele[] = [];
+  for (const a of actes || []) {
+    const r = resoudreLibelle(a?.acte, modeles, correspondances);
+    if ((r.etat === 'exact' || r.etat === 'valide') && r.modele && !vus.has(r.modele.id)) {
+      vus.add(r.modele.id);
+      out.push(r.modele);
+    }
+  }
+  return out;
+}
+
+export interface ContexteRemplissage {
+  /** Tout le catalogue chargé : il définit le vocabulaire que le système reconnaît comme le sien. */
+  modeles: Modele[];
+  /** Défauts des Paramètres PDF (composeIncExc) : une liste encore égale à eux n'a pas été touchée. */
+  defauts: { inc: string[]; exc: string[] };
+}
+
+export interface Remplissage {
+  inc: string[];
+  exc: string[];
+  /** L'acte dont les nuits font foi — absent quand aucun acte résolu ne porte de durée. */
+  nuitsDe?: Modele;
+  /** Ce qui a été fait, pour le DIRE à l'écran — jamais pour décider. */
+  ajoutees: string[];
+  remplacees: { avant: string; apres: string }[];
+}
+
+const clesDe = (lignes: string[] | undefined): string[] => (lignes || []).map(cleLibelle).filter(Boolean);
+
+/** Même liste au sens de la clé : mêmes lignes non vides, dans le même ordre. */
+const memeListe = (a: string[] | undefined, b: string[] | undefined): boolean => {
+  const ca = clesDe(a);
+  const cb = clesDe(b);
+  return ca.length === cb.length && ca.every((x, i) => x === cb[i]);
+};
+
+export function remplirPrestations(
+  courant: { inc?: string[]; exc?: string[] },
+  actesResolus: Modele[],
+  nouveau: Modele,
+  contexte: ContexteRemplissage,
+): Remplissage {
+  const actes = actesResolus.includes(nouveau) ? actesResolus : [...actesResolus, nouveau];
+  const nuitsDe = acteLePlusLong(actes);
+  /* L'acte qui donne l'ORDRE des lignes : celui des nuits s'il existe, sinon celui qu'on vient de choisir. */
+  const principal = nuitsDe || nouveau;
+  const ordonnes = [principal, ...actes.filter((m) => m !== principal)];
+
+  /* Vocabulaire « du système » : ce qu'il a pu écrire lui-même, donc ce qu'il peut remplacer. */
+  const vocabulaire = new Set<string>([
+    ...clesDe(contexte.defauts.inc),
+    ...clesDe(contexte.defauts.exc),
+    ...contexte.modeles.flatMap((m) => [...clesDe(m.inc), ...clesDe(m.exc)]),
+  ]);
+  const ajoutees: string[] = [];
+  const remplacees: { avant: string; apres: string }[] = [];
+
+  /* ---- incluses ---- */
+  const viergeInc = !clesDe(courant.inc).length || memeListe(courant.inc, contexte.defauts.inc);
+  const inc: string[] = viergeInc ? [] : [...(courant.inc || [])];
+  const presentes = new Set(clesDe(inc));
+  const ajouter = (liste: string[], vues: Set<string>, ligne: string) => {
+    const cle = cleLibelle(ligne);
+    if (!cle || vues.has(cle)) return;
+    liste.push(ligne);
+    vues.add(cle);
+    ajoutees.push(ligne);
+  };
+  /* ② — une nuit vient du plus long et de lui seul ; elle prend la place d'une
+     nuit de même nature écrite par le système, jamais celle d'une main. */
+  const placerNuit = (voulue: string) => {
+    const nature = natureLigne(voulue);
+    const i = inc.findIndex((l) => natureLigne(l) === nature);
+    if (i < 0) { ajouter(inc, presentes, voulue); return; }
+    const avant = inc[i];
+    if (cleLibelle(avant) === cleLibelle(voulue) || !vocabulaire.has(cleLibelle(avant))) return;
+    inc[i] = voulue;
+    presentes.delete(cleLibelle(avant));
+    presentes.add(cleLibelle(voulue));
+    remplacees.push({ avant, apres: voulue });
+  };
+  for (const m of ordonnes) {
+    for (const ligne of m.inc || []) {
+      if (natureLigne(ligne) === 'service') ajouter(inc, presentes, ligne);
+      else if (m === nuitsDe) placerNuit(ligne);
+      /* une nuit d'un acte qui n'est pas le plus long : ignorée, par construction */
+    }
+  }
+
+  /* ---- non incluses : union, sans doublon, jamais de retrait ---- */
+  const viergeExc = !clesDe(courant.exc).length || memeListe(courant.exc, contexte.defauts.exc);
+  const exc: string[] = viergeExc ? [] : [...(courant.exc || [])];
+  const presentesExc = new Set(clesDe(exc));
+  for (const m of ordonnes) for (const ligne of m.exc || []) ajouter(exc, presentesExc, ligne);
+
+  return { inc, exc, nuitsDe, ajoutees, remplacees };
+}
+
+/* Une nature de nuit que NATURES_NUIT ne nomme pas n'existe pas : la liste
+   est le contrat de placerNuit, exportée pour que la recette le vérifie. */
+export const NATURES_DE_NUIT: readonly NatureLigne[] = NATURES_NUIT;

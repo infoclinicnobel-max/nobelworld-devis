@@ -223,12 +223,18 @@ Autres invariants :
   « Dr Anvar », Benabedrabou « AANVAR AHMEDOV ») — la « réparation manuelle » d'Alma
   inscrite sur la liste de Veys était la réparation à la main de ce bogue. Rouvrir et
   corriger leurs devis répare les fiches **avec la raison écrite** — Tresor et Munao, dont
-  les factures sont annulées. **Pas Alma** : sa facture F-2026-000016 est vivante
-  (`envoye`), et la hiérarchie des documents rend la main **avant** toute évaluation — le
-  devis ne parle plus au CRM, rien n'est évalué ni journalisé, ni avant ni après ce lot ; sa
-  fiche se répare à la main côté CRM, ou par une remontée à l'enregistrement de la facture,
-  qui n'existe pas (la facture ne parle qu'à sa création) — lot à part, non construit. Un
-  dossier **clôturé**
+  les factures sont annulées. **Pas Alma, pas Sofia** : leurs factures F-2026-000016 et
+  F-2026-000028 sont vivantes (`envoye`), et la hiérarchie des documents rend la main
+  **avant** toute évaluation — le devis ne parle plus au CRM, rien n'est évalué ni
+  journalisé, ni avant ni après ce lot. Pour Sofia, la fenêtre a duré **52 secondes** (devis
+  06:32:16, facture 06:33:08) : la hiérarchie ne bloque pas la panne, elle bloque la
+  réparation. Leurs fiches se réparent à la main côté CRM ; une remontée à l'enregistrement
+  de la facture n'existe pas (la facture ne parle qu'à sa création), et ne réglerait pas
+  tout : F-2026-000016 est **orpheline** — sans devis, sans chirurgien, sans date — et fait
+  taire un devis qui porte les deux. L'autorité est donnée par le **rang** du document, pas
+  par ce qu'il porte ; la calculer **champ par champ** est une conception à décider, pas un
+  correctif — les deux factures sont au banc de la recette (§ 3 bis) avant qu'une ligne de
+  ce lot existe. Un dossier **clôturé**
   n'est pas une exception : rouvrir son document, c'est le modifier, et le refus y explique
   un vide qu'aucun journal n'expliquait (choix du 22 août, fixé par la recette). ⚠ **Limite
   nommée** : ce lot protège l'instant de l'enregistrement, il **ne surveille pas ce qui

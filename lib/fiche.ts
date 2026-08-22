@@ -202,9 +202,13 @@ export interface PlanRemontee {
    TROIS LIMITES, nommées pour qu'on ne croie pas le sujet clos :
    · Une FACTURE VIVANTE rend la main avant toute évaluation (lib/data.ts :
      « c'est elle qui parle au CRM ») — et la facture ne parle qu'à sa
-     création. Alma (F-2026-000016 envoyée) : rouvrir son devis n'évalue rien,
-     ne journalise rien ; sa fiche se répare à la main, ou par une remontée à
-     l'enregistrement de la facture, qui n'existe pas.
+     création. Alma (F-2026-000016) et Sofia (F-2026-000028, créée 52 s après
+     son devis) : rouvrir leur devis n'évalue rien, ne journalise rien ; la
+     hiérarchie ne bloque pas la panne, elle bloque la réparation. Leurs
+     fiches se réparent à la main. Et F-2026-000016 est ORPHELINE — sans
+     devis, sans chirurgien, sans date — : l'autorité est donnée par le rang
+     du document, pas par ce qu'il porte ; la calculer champ par champ est une
+     conception à décider avant tout lot « facture », pas un correctif.
    · Ce lot protège l'INSTANT DE L'ENREGISTREMENT ; il ne surveille pas ce qui
      dort. D-2026-000029 (opération au 2 juin) et D-2026-000030 (16 août),
      brouillons de plus d'un mois, ne produiront rien tant que personne ne les

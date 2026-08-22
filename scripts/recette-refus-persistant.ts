@@ -137,6 +137,39 @@ console.log('\n=== 3. planifierRemontee — la garde de date dans la boucle d\'�
   v('… et le journal reçoit l\'entrée — aucune règle de stade dans journaliserRefus', journalClos.nouvelles.length === 1 && /Dr Anvar/.test(journalClos.nouvelles[0].motif));
 }
 
+console.log('\n=== 3 bis. Les deux factures vivantes du recensement — bancs posés AVANT tout lot « facture » ===');
+{
+  /* Relevées en base le 22 août tard. Aujourd'hui, ni l'une ni l'autre ne
+     parle : une facture ne parle qu'à sa création. Si un lot les faisait parler
+     à chaque enregistrement, voici ce que la règle ACTUELLE en ferait — fixé
+     ici pour que ce lot, s'il vient, se mesure contre ces deux cas et non
+     contre une intuition. */
+  // F-2026-000028 — Sofia : porte la faute et la date. Sa fiche a déjà la date (écrite par le devis 52 s plus tôt).
+  /* `date` des deux factures non relevée : alignée sur la fiche, pour que le
+     banc ne parle que du chirurgien et de la date d'opération — une date de
+     document différente de dateDevis ferait une divergence, vraie mais hors
+     sujet (le premier passage de ce banc l'a montré). */
+  const f28: Partial<DocRecord> = { numero: 'F-2026-000028', date: '2026-08-11', chirurgien: 'AANVAR AHMEDOV', dateIntervention: '2026-09-06', forfait: 5500, statut: 'envoye' };
+  const sofia = fiche({ prenom: 'SOFIA', nom: 'BENABEDRABOU', stade: 'Confirmé', dateOperation: '2026-09-06', dateDevis: '2026-08-11', budget: '5500' });
+  const pS = planifierRemontee(doc(f28), sofia, { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
+  v('F-28 (Sofia) parlerait : le chirurgien est REFUSÉ — le bon comportement, la faute est sur la facture',
+    champs(pS.refus) === 'medecin' && !('medecin' in pS.aEcrire));
+  v('… sa date, déjà sur la fiche et identique, n\'est ni réécrite ni en divergence',
+    !('dateOperation' in pS.aEcrire) && pS.dejaConformes.includes("date d'opération"));
+  // F-2026-000016 — Alma : ORPHELINE. Sans devis, sans chirurgien, sans date. Elle gagne par son rang, et ne porte rien.
+  const f16: Partial<DocRecord> = { numero: 'F-2026-000016', date: '2026-07-28', chirurgien: '', dateIntervention: '', forfait: 6400, actes: [], statut: 'envoye' };
+  const almaReparee = fiche({ prenom: 'Gaëlle', nom: 'Alma', stade: 'Confirmé', medecin: 'Dr Anvar Ahmedov', dateOperation: '2027-03-09', dateDevis: '2026-07-28', budget: '6400' });
+  const pA = planifierRemontee(doc(f16), almaReparee, { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
+  v('F-16 (Alma, orpheline) parlerait après une réparation à la main : elle n\'ÉCRIT rien',
+    Object.keys(pA.aEcrire).length === 0);
+  v('… et n\'EFFACE rien — aucune divergence, aucun refus : une valeur absente n\'est pas une valeur',
+    pA.divergences.length === 0 && pA.refus.length === 0);
+  const almaVide = fiche({ prenom: 'Gaëlle', nom: 'Alma', stade: 'Confirmé', budget: '6400' });
+  const pV = planifierRemontee(doc(f16), almaVide, { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
+  v('… et sur une fiche encore vide, elle ne RÉPARE ni le chirurgien ni la date d\'opération : un document vide qui parle reste vide',
+    !('medecin' in pV.aEcrire) && !('dateOperation' in pV.aEcrire) && pV.refus.length === 0);
+}
+
 console.log('\n=== 4. journaliserRefus — le journal dit aussi le refus, une fois ===');
 {
   const sig = { u: 'veys', date: '2026-08-22', heure: '09:43', motif: 'Remontée automatique du devis D-2026-000046' };

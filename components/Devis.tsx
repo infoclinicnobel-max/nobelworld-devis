@@ -92,7 +92,7 @@ export function DevisView() {
        « on n'écrit que dans un champ vide » rend l'opération rejouable, la
        seconde remontée ne fait rien. Aucune garde supplémentaire n'est utile. */
     try {
-      const r = await remonterVersFiche(fac, 'facture', false, signatureJournal(user));
+      const r = await remonterVersFiche(fac, 'facture', false, signatureJournal(user), userLabel(user));
       const rdv = phraseAgenda(r.agenda);
       if (r.statut === 'ecrit') {
         const noms = Object.keys(r.ecrits)
@@ -104,7 +104,8 @@ export function DevisView() {
            branche, la ligne partirait sans que personne l'apprenne. */
         toast(`Fiche de ${r.patient} déjà à jour — ${rdv}.`);
       }
-      if (r.divergences.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
+      if (r.refus.length) toast(phraseRefus(r), 'err');
+      if (r.divergences.length || r.refus.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
         setRapport({ r, numero });
       }
     } catch (e) {
@@ -300,6 +301,15 @@ function phraseAgenda(a?: PlanAgenda): string | null {
   return null;
 }
 
+/* Une phrase par refus, pour le toast — la fenêtre de rapport porte le détail. */
+function phraseRefus(r: ResultatRemontee): string {
+  const lignes = r.refus.map((x) => `${x.libelle} « ${x.valeur} » refusé : ${x.pourquoi}`);
+  const suite = r.refusJournalises.length
+    ? 'inscrit au journal de la fiche'
+    : 'déjà au journal, ou brouillon : journalisé dès l’envoi';
+  return `⚠ Fiche de ${r.patient} — ${lignes.join(' · ')} — ${suite}.`;
+}
+
 function RapportFiche({
   r, numero, onClose,
 }: { r: ResultatRemontee; numero: string; onClose: () => void }) {
@@ -308,9 +318,11 @@ function RapportFiche({
     <Modal
       title={introuvable
         ? 'Fiche patiente introuvable'
-        : r.divergences.length
-          ? 'Fiche patiente — divergences non écrasées'
-          : 'Agenda — une autre date est déjà posée'}
+        : r.refus.length
+          ? 'Fiche patiente — valeurs refusées par la remontée'
+          : r.divergences.length
+            ? 'Fiche patiente — divergences non écrasées'
+            : 'Agenda — une autre date est déjà posée'}
       onClose={onClose}
       footer={<button className="btn btn-primary" onClick={onClose}>J&apos;ai compris</button>}
     >
@@ -322,11 +334,37 @@ function RapportFiche({
         </p>
       ) : (
         <>
-          <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 0 }}>
-            La fiche de <b>{r.patient}</b> contient déjà des valeurs différentes de celles du devis{' '}
-            <b>{numero}</b>. <b>Le CRM a été conservé, rien n&apos;a été écrasé.</b> Corrigez à la main
-            du côté où la valeur est fausse.
-          </p>
+          {/* Le refus, nommé et durable : ce que le document propose, pourquoi la
+              remontée ne l'écrit pas, et où la trace est allée. Un refus sans
+              trace s'est déjà répété onze minutes après (Sofia → Sherline). */}
+          {!!r.refus.length && (
+            <div style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 12 }}>
+              <p style={{ marginTop: 0 }}>
+                Le document <b>{numero}</b> porte des valeurs que la remontée vers la fiche de <b>{r.patient}</b>{' '}
+                <b>refuse d&apos;écrire</b> :
+              </p>
+              <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>
+                {r.refus.map((x) => (
+                  <li key={x.champ}>
+                    <b>{x.libelle}</b> « {x.valeur} » — {x.pourquoi}.
+                  </li>
+                ))}
+              </ul>
+              <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                {r.refusJournalises.length
+                  ? 'Inscrit au journal de la fiche et à l’historique. '
+                  : 'Déjà inscrit au journal — ou document encore au brouillon, journalisé dès l’envoi. '}
+                Corrigez le document, ou la fiche à la main ; la remontée n&apos;écrira rien à la place.
+              </p>
+            </div>
+          )}
+          {!!r.divergences.length && (
+            <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 0 }}>
+              La fiche de <b>{r.patient}</b> contient déjà des valeurs différentes de celles du devis{' '}
+              <b>{numero}</b>. <b>Le CRM a été conservé, rien n&apos;a été écrasé.</b> Corrigez à la main
+              du côté où la valeur est fausse.
+            </p>
+          )}
           {!!r.divergences.length && (
             <table style={{ fontSize: 12.5 }}>
               <thead>
@@ -674,7 +712,7 @@ export function DevisEditor({
          fois. `forcer` porte le bouton manuel, rien d'autre. */
       {
         try {
-          const r = await remonterVersFiche(saved, 'devis', forcer, signatureJournal(user));
+          const r = await remonterVersFiche(saved, 'devis', forcer, signatureJournal(user), userLabel(user));
           /* Le message dit les DEUX moitiés : ce qui est écrit, et ce qui est
              volontairement laissé, avec la raison. Sans la seconde, l'assistante
              clique, voit la date arriver, voit le stade rester en place, et
@@ -695,7 +733,11 @@ export function DevisEditor({
             const parts = laisses.length ? laisses : [r.raison || 'fiche déjà à jour'];
             toast(`Rien à reporter — ${parts.join(' · ')}.`);
           }
-          if (r.divergences.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
+          /* Le refus se DIT deux fois : un toast, qu'on peut manquer, et la
+             fenêtre de rapport, qu'on doit fermer — parce que le toast de Sofia
+             a été manqué, et que la même faute est repartie onze minutes après. */
+          if (r.refus.length) toast(phraseRefus(r), 'err');
+          if (r.divergences.length || r.refus.length || r.agenda?.cas === 'ecart' || r.statut === 'fiche-introuvable') {
             onRapportFiche?.(r, saved.numero || '');
           }
         } catch (e) {

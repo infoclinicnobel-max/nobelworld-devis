@@ -18,11 +18,14 @@ import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } fro
 import type { Settings } from './defaults';
 import type { AppUser } from './perms';
 import {
-  aPaye, COLONNES_AUTORISEES, factureEstVivante, journaliserRemontee, niveauEngagement,
-  planifierRemontee,
+  aPaye, COLONNES_AUTORISEES, evaluerDocument, factureEstVivante, journaliserRefus,
+  journaliserRemontee, niveauEngagement, planifierRemontee,
   type Engagement,
   type Divergence,
+  type EntreeJournal,
+  type Refus,
 } from './fiche';
+import { todayISO } from './format';
 import {
   planifierRendezVous, TYPE_OPERATION, type LigneAgenda, type PlanAgenda,
 } from './agenda';
@@ -230,6 +233,10 @@ export interface ResultatRemontee {
      ce retour, une ligne part au calendrier sans que personne le sache, ou
      n'y part pas sans que personne l'apprenne. */
   agenda?: PlanAgenda;
+  /** Ce que le document propose et que la remontée refuse — évalué à chaque enregistrement, brouillon compris. */
+  refus: Refus[];
+  /** Les refus qui viennent d'entrer au journal de fiche (dédoublonnés) — vides pour un brouillon ou une répétition. */
+  refusJournalises: EntreeJournal[];
 }
 
 /* Reporte vers `patients` les quatre champs du devis, et EUX SEULS.
@@ -272,9 +279,13 @@ export async function remonterVersFiche(
      CRM y écrit). Vide, le journal dira « nobel-world » : une trace anonyme
      vaut mieux qu'aucune, mais les appelants DOIVENT passer l'utilisateur. */
   auteur = '',
+  /* Le même utilisateur au format de `nw_historique` (« Veys Turan ») : chaque
+     journal garde son format natif (convention provisoire du 21 août). */
+  auteurNw = '',
 ): Promise<ResultatRemontee> {
   const vide: ResultatRemontee = {
     statut: 'sans-fiche', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
+    refus: [], refusJournalises: [],
   };
   const id = String(devis.patientId || '').trim();
   if (!id) return vide;
@@ -310,6 +321,7 @@ export async function remonterVersFiche(
   if (source === 'devis' && facturesDeLaPatiente.some((f) => factureEstVivante(f.statut))) {
     return {
       statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
+      refus: [], refusJournalises: [],
       raison: 'une facture vivante existe : c\'est elle qui parle au CRM',
     };
   }
@@ -334,12 +346,6 @@ export async function remonterVersFiche(
   /* Trois niveaux : un devis ENVOYÉ écrit le stade et rien d'autre ; un devis
      accepté ou un paiement écrit les six colonnes ; sinon rien. */
   const engagement = niveauEngagement(devisDeLaPatiente, paye);
-  if (engagement === 'aucun' && !forcer) {
-    return {
-      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
-      raison: 'aucun devis envoyé ou accepté, et aucun paiement : le document n\'engage encore personne',
-    };
-  }
 
   const f = ficheR.data as unknown as Record<string, unknown>;
   const patient = `${f.prenom || ''} ${f.nom || ''}`.trim();
@@ -350,50 +356,96 @@ export async function remonterVersFiche(
     .map((m: { nomAffiche?: unknown }) => String(m.nomAffiche || '').trim())
     .filter(Boolean);
 
+  /* ---- ÉVALUER avant de décider d'écrire, et quel que soit l'engagement ----
+
+     Le refus d'un chirurgien inconnu ou d'une date passée vivait dans la
+     boucle par colonne, sautée hors engagement : il ne pouvait se produire
+     qu'à l'acceptation — au moment du dommage. Évalué ICI, à chaque
+     enregistrement, il se journalise dès l'envoi, des semaines avant
+     (D-2026-000023 est « envoyé » depuis le 3 juillet). Les colonnes, elles,
+     ne s'écrivent que sous engagement, comme avant : seule la condition
+     d'ÉVALUATION descend d'un cran, pas celle d'écriture. */
+  const aujourdhui = todayISO();
+  const refus = evaluerDocument(devis, vocabulaireMedecins, aujourdhui);
+  const quand = new Date();
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const signature = {
+    u: auteur || 'nobel-world',
+    date: `${quand.getFullYear()}-${p2(quand.getMonth() + 1)}-${p2(quand.getDate())}`,
+    heure: `${p2(quand.getHours())}:${p2(quand.getMinutes())}`,
+    motif: `Remontée automatique ${source === 'facture' ? 'de la facture' : 'du devis'} ${devis.numero || ''}`.trim(),
+  };
+  /* Un brouillon n'engage personne et n'est pas parti : on évalue, on le DIT à
+     l'écran, on ne journalise pas encore. Dès « envoyé », le document existe
+     hors de la maison : le refus entre dans les deux journaux. */
+  const journalRefus = engagement === 'aucun' && !forcer
+    ? { journal: null, nouvelles: [] as EntreeJournal[] }
+    : journaliserRefus(f.historique, refus, signature);
+
+  if (engagement === 'aucun' && !forcer) {
+    return {
+      statut: 'rien-a-ecrire', ecrits: {}, divergences: [], dejaConformes: [], laisses: [],
+      refus, refusJournalises: [],
+      raison: 'aucun devis envoyé ou accepté, et aucun paiement : le document n\'engage encore personne',
+    };
+  }
+
   /* Les factures partent avec le plan : la clause d'annulation en a besoin
      pour refuser « Confirmé » à une affaire morte (facture annulée sans
      remplaçante vivante). Les médecins aussi : la règle du chapitre 1 écrit
      la forme canonique ou refuse, jamais la valeur brute du devis. */
   const plan = planifierRemontee(devis, f as never, {
     engagement, forcerDonnees: forcer, factures: facturesDeLaPatiente,
-    medecins: vocabulaireMedecins,
+    medecins: vocabulaireMedecins, aujourdhui,
   });
   const base = {
     patient, divergences: plan.divergences, dejaConformes: plan.dejaConformes, laisses: plan.laisses,
+    refus, refusJournalises: journalRefus.nouvelles,
   };
 
   const colonnesEcrites = Object.keys(plan.aEcrire);
 
+  /* Ceinture et bretelles : une colonne hors de la liste blanche ne part pas. */
+  const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
+  if (interdite) {
+    throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
+  }
+  /* La TRACE part dans le MÊME update que les données — jamais après coup :
+     `patients` n'a aucun déclencheur, une écriture qui ne pose ni journal ni
+     updated_at est strictement invisible. Mesuré le 19 août : la remontée en
+     service avait rempli Cindy, Diallo et El Acmaoui en laissant leur
+     historique entièrement vide, pendant que le CRM, lui, journalise les
+     corrections humaines. Deux clés s'ajoutent donc ici, et deux seulement :
+     `historique` (une entrée par colonne, auteur + horodatage + document
+     source) et `updated_at` — la donnée, elle, reste bornée par la liste
+     blanche contrôlée ci-dessus.
+
+     Les REFUS entrent dans le même journal, en tête (journaliserRefus, plus
+     haut), dédoublonnés : le journal ne ment plus par omission — sur Sofia il
+     portait cinq succès et zéro mention du chirurgien refusé. Sans colonne à
+     écrire ni refus nouveau, `patients` n'est pas touché. */
+  let historique: string | null = journalRefus.journal;
   if (colonnesEcrites.length) {
-    /* Ceinture et bretelles : une colonne hors de la liste blanche ne part pas. */
-    const interdite = colonnesEcrites.find((c) => !COLONNES_AUTORISEES.has(c));
-    if (interdite) {
-      throw new Error(`Écriture refusée : « ${interdite} » ne fait pas partie des colonnes remontées.`);
-    }
-    /* La TRACE part dans le MÊME update que les données — jamais après coup :
-       `patients` n'a aucun déclencheur, une écriture qui ne pose ni journal ni
-       updated_at est strictement invisible. Mesuré le 19 août : la remontée en
-       service avait rempli Cindy, Diallo et El Acmaoui en laissant leur
-       historique entièrement vide, pendant que le CRM, lui, journalise les
-       corrections humaines. Deux clés s'ajoutent donc ici, et deux seulement :
-       `historique` (une entrée par colonne, auteur + horodatage + document
-       source) et `updated_at` — la donnée, elle, reste bornée par la liste
-       blanche contrôlée ci-dessus. */
-    const quand = new Date();
-    const p2 = (n: number) => String(n).padStart(2, '0');
-    const journal = journaliserRemontee(
-      f.historique, plan.aEcrire, (c) => String(f[c] ?? ''),
-      {
-        u: auteur || 'nobel-world',
-        date: `${quand.getFullYear()}-${p2(quand.getMonth() + 1)}-${p2(quand.getDate())}`,
-        heure: `${p2(quand.getHours())}:${p2(quand.getMinutes())}`,
-        motif: `Remontée automatique ${source === 'facture' ? 'de la facture' : 'du devis'} ${devis.numero || ''}`.trim(),
-      },
-    );
+    const journal = journaliserRemontee(historique ?? f.historique, plan.aEcrire, (c) => String(f[c] ?? ''), signature);
+    if (journal !== null) historique = journal;
+  }
+  if (colonnesEcrites.length || historique !== null) {
     const payload: Record<string, string> = { ...plan.aEcrire, updated_at: quand.toISOString() };
-    if (journal !== null) payload.historique = journal;
+    if (historique !== null) payload.historique = historique;
     const { error: err2 } = await sb.from('patients').update(payload).eq('id', id);
     if (err2) throw new Error('Report vers la fiche impossible : ' + err2.message);
+  }
+  /* Le second journal — celui que Nobel World affiche — reçoit le même refus,
+     une fois lui aussi : il ne s'écrit que si la fiche vient d'en recevoir
+     l'entrée. Un seul dédoublonnage, celui du journal de fiche, qui fait foi. */
+  for (const n of journalRefus.nouvelles) {
+    const r = refus.find((x) => x.champ === n.champ);
+    await journaliser(
+      auteurNw || auteur || 'nobel-world',
+      `a enregistré ${source === 'facture' ? 'la facture' : 'le devis'} ${devis.numero || ''} — `
+        + `${r?.libelle || n.champ} « ${r?.valeur || ''} » refusé par la remontée vers la fiche de ${patient} : `
+        + `${r?.pourquoi || n.motif}`,
+    );
   }
 
   /* ---- Le calendrier, APRÈS l'écriture de la fiche et HORS du raccourci ----
@@ -434,7 +486,7 @@ async function poserAuCalendrier(
       stade: String(fiche.stade ?? ''),
     },
     (data || []) as { id: string; type: string; date: string }[],
-    { engagement, horodatage: Date.now(), suffixe: suffixeRdv() },
+    { engagement, horodatage: Date.now(), suffixe: suffixeRdv(), aujourdhui: todayISO() },
   );
   if (plan.cas === 'a-creer') await insererRendezVousOperation(plan.ligne);
   return plan;

@@ -18,10 +18,10 @@ const section = (t: string) => console.log(`\n--- ${t} ---`);
 
 const HORO = 1787141014962;
 const SUF = 'nw01';
-const plan = (f: Partial<FicheAgenda>, rdvs: RdvExistant[], e: Engagement = 'engage'): PlanAgenda =>
+const plan = (f: Partial<FicheAgenda>, rdvs: RdvExistant[], e: Engagement = 'engage', aujourdhui?: string): PlanAgenda =>
   planifierRendezVous(
     { id: 'p1', dateOperation: '2026-10-12', medecin: 'Dr Anvar Ahmedov', hopital: '', stade: 'Confirmé', ...f },
-    rdvs, { engagement: e, horodatage: HORO, suffixe: SUF },
+    rdvs, { engagement: e, horodatage: HORO, suffixe: SUF, aujourdhui },
   );
 const op = (date: string, id = 'r1'): RdvExistant => ({ id, type: TYPE_OPERATION, date });
 
@@ -81,6 +81,30 @@ verifier('medecin recopié mot pour mot, casse comprise',
 verifier('hopital recopié depuis la fiche',
   casse.cas === 'a-creer' && casse.ligne.hopital === 'Avrasya Hospital');
 verifier('hopital vide reste vide', l.hopital === '');
+
+section('4 bis · une date passée ne se pose pas au calendrier (22 août)');
+{
+  /* D-2026-000046 porte date_intervention = 2026-01-05 sur une fiche vide : le
+     jour de son acceptation, sans cette garde, une opération se posait en
+     janvier dernier. Mesuré le 22 août : quatre devis non engagés sur dix
+     portent une date déjà passée. */
+  const AUJOURDHUI = '2026-08-22';
+  const passee = plan({ dateOperation: '2026-01-05' }, [], 'engage', AUJOURDHUI);
+  verifier('date passée, aucun rendez-vous → « rien », et la raison le dit',
+    passee.cas === 'rien' && /déjà passée/.test(passee.pourquoi), passee.cas);
+  const future = plan({ dateOperation: '2026-10-12' }, [], 'engage', AUJOURDHUI);
+  verifier('JUMEAU : date future → « a-creer »', future.cas === 'a-creer', future.cas);
+  const cejour = plan({ dateOperation: AUJOURDHUI }, [], 'engage', AUJOURDHUI);
+  verifier('le jour même n’est pas passé → « a-creer »', cejour.cas === 'a-creer', cejour.cas);
+  const dejaLa = plan({ dateOperation: '2026-01-05' }, [op('2026-01-05')], 'engage', AUJOURDHUI);
+  verifier('date passée mais rendez-vous déjà posé → « deja-la » : l’existant se reconnaît, passé ou non',
+    dejaLa.cas === 'deja-la', dejaLa.cas);
+  const ecart = plan({ dateOperation: '2026-01-05' }, [op('2026-10-13')], 'engage', AUJOURDHUI);
+  verifier('date passée et autre date au calendrier → « ecart » : signalé, rien créé', ecart.cas === 'ecart', ecart.cas);
+  const sansJour = plan({ dateOperation: '2026-01-05' }, []);
+  verifier('sans `aujourdhui` (appelant ancien) la garde ne joue pas — la recette du flux vérifie qu’il le passe',
+    sansJour.cas === 'a-creer', sansJour.cas);
+}
 
 section('5 · le statut suit le stade, pas l’écriture');
 

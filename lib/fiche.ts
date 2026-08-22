@@ -160,6 +160,80 @@ export interface PlanRemontee {
   stadeHorsEchelle?: string;
   /** Chirurgien du document absent du vocabulaire `medecins` : refusé, à dire. */
   chirurgienInconnu?: string;
+  /** Ce que le document propose et que la remontée refuse — évalué même quand rien ne s'écrit. */
+  refus: Refus[];
+}
+
+/* ------------------------------------------------- évaluer ≠ écrire
+
+   Mesuré le 22 août : la remontée avait refusé « AANVAR AHMEDOV » sur
+   D-2026-000045 (Sofia) — et le journal de sa fiche portait cinq succès et
+   ZÉRO mention de l'échec. Le toast a été affiché, pas lu ; onze minutes plus
+   tard la même faute repartait sur D-2026-000046. Pire : le refus vivait dans
+   la boucle par colonne, sautée hors engagement — il ne pouvait se produire
+   qu'à l'acceptation, à l'instant même où la fiche reçoit ses colonnes et
+   l'agenda sa ligne. Une alarme qui sonne au moment du dommage est un constat.
+
+   D'où cette fonction, PURE et séparée de l'écriture : elle évalue ce que le
+   document propose — chirurgien, date d'opération — à CHAQUE enregistrement,
+   quel que soit l'engagement, sans rien écrire. Ce qu'elle refuse se
+   journalise dès l'envoi (lib/data.ts), des semaines avant l'acceptation :
+   D-2026-000023 est « envoyé » depuis le 3 juillet. Les colonnes de la fiche,
+   elles, ne s'écrivent que sous engagement, exactement comme avant.
+
+   Exposition mesurée le 22 août sur les dix devis non engagés : quatre dates
+   d'opération déjà passées (D-29 au 2 juin, D-30, D-33, D-46 au 5 janvier),
+   un chirurgien inconnu (D-46). La garde de date porte quatre fois
+   l'exposition de la garde de chirurgien, et trois des quatre sont de vieux
+   devis que personne ne regarde plus — ceux qu'on accepte tard.
+
+   Le « pourquoi » est STABLE d'un jour à l'autre (pas d'« aujourd'hui » dedans) :
+   c'est la clé de dédoublonnage du journal. */
+export interface Refus {
+  /** Colonne de `patients` qui aurait été visée. */
+  champ: 'medecin' | 'dateOperation';
+  libelle: string;
+  /** La valeur du document, telle quelle — c'est elle qu'on refuse. */
+  valeur: string;
+  pourquoi: string;
+}
+
+export const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+export function evaluerDocument(
+  doc: DocRecord, medecins: readonly string[] | undefined, aujourdhui: string,
+): Refus[] {
+  const refus: Refus[] = [];
+  const chirurgien = String(doc.chirurgien ?? '').trim();
+  /* `medecins` ABSENT : pas de vocabulaire, pas d'évaluation (appelants anciens).
+     PRÉSENT et vide : tout chirurgien est refusé — l'interdit v1.83. */
+  if (chirurgien && medecins !== undefined) {
+    const cle = normaliser(chirurgien);
+    const canonique = cle ? medecins.find((m) => normaliser(m) === cle) : undefined;
+    if (!canonique) {
+      refus.push({
+        champ: 'medecin', libelle: 'chirurgien', valeur: chirurgien,
+        pourquoi: medecins.length
+          ? `« ${chirurgien} » ne correspond à aucun médecin de la table medecins`
+          : `« ${chirurgien} » ne peut pas être traduit : le vocabulaire des médecins est vide ou illisible`,
+      });
+    }
+  }
+  const date = String(doc.dateIntervention ?? '').trim();
+  if (date) {
+    if (!DATE_ISO.test(date)) {
+      refus.push({
+        champ: 'dateOperation', libelle: "date d'opération", valeur: date,
+        pourquoi: `« ${date} » n'est pas une date lisible (AAAA-MM-JJ)`,
+      });
+    } else if (DATE_ISO.test(aujourdhui) && date < aujourdhui) {
+      refus.push({
+        champ: 'dateOperation', libelle: "date d'opération", valeur: date,
+        pourquoi: `la date d'opération ${date} est déjà passée`,
+      });
+    }
+  }
+  return refus;
 }
 
 /* Trois niveaux, pas deux. Un devis ENVOYÉ parle au CRM, mais pour dire une
@@ -235,15 +309,23 @@ export function planifierRemontee(
        passent toujours. PRÉSENT et vide, tout `medecin` est refusé : c'est
        l'interdit v1.83, qui se réimpose de lui-même si la table se vide. */
     medecins?: readonly string[];
+    /* La date du jour (todayISO()), injectée pour rester pur : ABSENTE, une date
+       d'opération passée n'est pas reconnue comme telle — les deux appelants
+       réels la passent toujours, et la recette le garde. */
+    aujourdhui?: string;
   } = { engagement: 'engage' },
 ): PlanRemontee {
-  const { engagement, forcerDonnees = false, factures = [], medecins } = opts;
+  const { engagement, forcerDonnees = false, factures = [], medecins, aujourdhui = '' } = opts;
   const aEcrire: Record<string, string> = {};
   const divergences: Divergence[] = [];
   const dejaConformes: string[] = [];
   const laisses: { libelle: string; pourquoi: string }[] = [];
   let stadeHorsEchelle: string | undefined;
   let chirurgienInconnu: string | undefined;
+  /* Évalué AVANT la boucle, et quel que soit l'engagement : le refus existe
+     dès qu'un document propose une valeur irrecevable, pas seulement le jour
+     où on aurait voulu l'écrire. */
+  const refus = evaluerDocument(devis, medecins, aujourdhui);
 
   for (const champ of CHAMPS_REMONTES) {
     const estStade = champ.devis === CLE_STADE;
@@ -255,6 +337,15 @@ export function planifierRemontee(
 
     const valeurDevis = valeurPourFiche(champ, devis as unknown as Record<string, unknown>, engagement);
     const valeurCrm = String((fiche as unknown as Record<string, unknown>)[champ.fiche] ?? '');
+
+    /* ---- date d'opération : une date passée ou illisible ne s'écrit JAMAIS,
+       même dans un champ vide — et la première écriture étant définitive, c'est
+       précisément là qu'elle ferait le plus de mal (D-2026-000046 : 2026-01-05
+       sur une fiche vide). Laissée, et dite. */
+    if (champ.fiche === 'dateOperation') {
+      const r = refus.find((x) => x.champ === 'dateOperation');
+      if (r) { laisses.push({ libelle: champ.libelle, pourquoi: `${r.pourquoi} — non écrite` }); continue; }
+    }
 
     /* Le stade n'a rien à proposer quand rien n'engage — mais il faut le DIRE.
        C'est le cas du bouton manuel sur un brouillon : cinq champs arrivent, le
@@ -339,7 +430,48 @@ export function planifierRemontee(
     if (champ.silencieux) continue;
     divergences.push({ libelle: champ.libelle, colonne: champ.fiche, valeurCrm, valeurDevis });
   }
-  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle, chirurgienInconnu };
+  return { aEcrire, divergences, dejaConformes, laisses, stadeHorsEchelle, chirurgienInconnu, refus };
+}
+
+/* ------------------------------------------------- le journal dit aussi le refus
+
+   Le journal de fiche enregistrait les succès et rien d'autre : sur Sofia,
+   cinq entrées « Remontée automatique du devis D-2026-000045 » et aucune
+   trace du chirurgien refusé. Une absence dans un journal de modifications est
+   indiscernable de « il n'y avait rien à modifier » — qui ouvre la fiche dans
+   six mois conclut, correctement au vu du journal, que tout a été fait.
+
+   Une entrée par refus, au format du CRM. `nouveau` reste VIDE : rien n'a été
+   écrit, et y mettre la valeur refusée serait le mensonge inverse. La valeur
+   et la raison vont dans `motif`. Une entrée ne se pose qu'UNE fois : le même
+   document réenregistré avec la même faute ne la répète pas (même champ, même
+   motif) ; une autre faute en pose une autre. Un journal illisible n'est
+   jamais écrasé : null, comme journaliserRemontee. */
+export function journaliserRefus(
+  historiqueActuel: unknown,
+  refus: Refus[],
+  signature: { u: string; date: string; heure: string; motif: string },
+): { journal: string | null; nouvelles: EntreeJournal[] } {
+  if (!refus.length) return { journal: null, nouvelles: [] };
+  let arr: unknown = [];
+  const brut = String(historiqueActuel ?? '').trim();
+  if (brut) {
+    try { arr = JSON.parse(brut); } catch { return { journal: null, nouvelles: [] }; }
+    if (!Array.isArray(arr)) return { journal: null, nouvelles: [] };
+  }
+  const existantes = arr as Partial<EntreeJournal>[];
+  const nouvelles: EntreeJournal[] = [];
+  for (const r of refus) {
+    const motif = `Refusé — ${r.pourquoi} : non écrit (${signature.motif})`;
+    if (existantes.some((e) => !!e && e.champ === r.champ && e.motif === motif)) continue;
+    if (nouvelles.some((e) => e.champ === r.champ && e.motif === motif)) continue;
+    nouvelles.push({
+      u: signature.u, date: signature.date, heure: signature.heure,
+      champ: r.champ, ancien: '', nouveau: '', motif,
+    });
+  }
+  if (!nouvelles.length) return { journal: null, nouvelles };
+  return { journal: JSON.stringify([...existantes, ...nouvelles]), nouvelles };
 }
 
 

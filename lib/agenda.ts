@@ -11,7 +11,7 @@
    INSERT, et `rdvs` reste hors de TABLES_ECRITURE — y entrer ouvrirait aussi
    `supprimer()`. */
 
-import { rangStade, STADE_CONFIRME, type Engagement } from './fiche';
+import { DATE_ISO, rangStade, STADE_CONFIRME, type Engagement } from './fiche';
 
 /** Le seul type que ce chemin sait écrire. Reposé à l'instant de l'INSERT. */
 export const TYPE_OPERATION = 'Opération';
@@ -91,7 +91,7 @@ export function statutPourStade(stade: unknown): string {
 export function planifierRendezVous(
   fiche: FicheAgenda,
   rdvs: RdvExistant[],
-  opts: { engagement: Engagement; horodatage: number; suffixe: string },
+  opts: { engagement: Engagement; horodatage: number; suffixe: string; aujourdhui?: string },
 ): PlanAgenda {
   /* Un devis ENVOYÉ n'écrit que le stade ; il ne réserve pas un bloc opératoire.
      Poser un rendez-vous pour une patiente non confirmée bloquerait un créneau
@@ -111,6 +111,15 @@ export function planifierRendezVous(
     return {
       cas: 'ecart', rdvId: texte(autre.id), dateAgenda: texte(autre.date), dateFiche: date,
     };
+  }
+
+  /* Une date déjà passée ne se pose pas au calendrier : une opération posée en
+     janvier dernier parce qu'un devis accepté tard la porte encore n'avertit
+     personne (D-2026-000046 : 2026-01-05, mesuré le 22 août). Le même-date et
+     l'écart passent AVANT : un rendez-vous existant se reconnaît, passé ou non.
+     `aujourdhui` est injecté (todayISO()) pour que la règle reste pure. */
+  if (opts.aujourdhui && DATE_ISO.test(opts.aujourdhui) && date < opts.aujourdhui) {
+    return { cas: 'rien', pourquoi: `la date d'opération ${date} est déjà passée : rien n'est posé au calendrier` };
   }
 
   return {

@@ -191,6 +191,33 @@ Autres invariants :
   l'enregistrement (`nettoyerActes` — deux devis émis en portaient une) ; rien de
   rétroactif. La Bibliothèque affiche le compte des correspondances en attente de
   relecture — une ligne, pas de bouton « tout valider », ni maintenant ni jamais.
+- **Le refus persiste, et il arrive avant le dommage.** Décidé le 22 août 2026 sur un cas
+  daté : D-2026-000045 (Sofia) — « AANVAR AHMEDOV » refusé par la traduction, fiche restée
+  vide, journal de fiche portant cinq succès et **zéro mention de l'échec** ; onze minutes
+  plus tard la même faute repartait sur D-2026-000046, avec une date d'opération au
+  **5 janvier 2026**. Deux défauts, une cause : le refus vivait dans la boucle par colonne,
+  sautée hors engagement — il ne pouvait se produire qu'à l'acceptation, à l'instant même
+  où la fiche reçoit ses colonnes et l'agenda sa ligne. Désormais **évaluer et écrire sont
+  séparés** (`evaluerDocument`, `lib/fiche.ts`) : chirurgien et date d'opération sont
+  évalués **à chaque enregistrement**, brouillon compris, et le refus entre dans **les deux
+  journaux dès « envoyé »** — `patients.historique` (`journaliserRefus` : une entrée par
+  refus, `nouveau` vide puisque rien n'est écrit, valeur et raison dans `motif`, **une
+  fois** par faute, jamais répétée à la réécriture du même document) et `nw_historique` —
+  des semaines avant l'acceptation (D-2026-000023 est « envoyé » depuis le 3 juillet). Les
+  colonnes de la fiche, elles, ne s'écrivent toujours que sous engagement : seule la
+  condition d'évaluation descend d'un cran. **Garde de date** : une date d'opération passée
+  ou illisible **ne s'écrit jamais**, même dans un champ vide — la première écriture y est
+  définitive — et `planifierRendezVous` ne pose rien au calendrier pour une date passée ;
+  exposition mesurée le 22 août sur les dix devis non engagés : **quatre** dates passées
+  (D-29 au 2 juin, D-30, D-33, D-46) contre **un** chirurgien inconnu, la garde de date
+  passe donc avant. Un brouillon est évalué et dit à l'écran, pas journalisé : il n'est pas
+  parti. La fenêtre de rapport nomme chaque refus, le toast aussi — le toast de Sofia a été
+  manqué. Recette `scripts/recette-refus-persistant.ts` (les valeurs réelles des dix
+  devis, jumeaux date passée / future, dédoublonnage, journal illisible jamais écrasé,
+  garde de source : l'évaluation précède le raccourci d'engagement) et `recette-agenda.ts`
+  § 4 bis. Écritures : `patients` (`historique` + `updated_at`, `UPDATE` ciblé, colonnes
+  nommées) dès l'envoi, et une ligne `nw_historique` — aucune colonne de donnée de plus,
+  aucune table nouvelle.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

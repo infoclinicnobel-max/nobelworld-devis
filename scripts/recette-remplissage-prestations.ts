@@ -97,6 +97,13 @@ const TOUS = [BBL, ABDO, RHINO, MAMMAIRE, SLEEVE, MOTIVA, SOURCILS, BLEPHARO, AL
 const ALOPECIE_ANCIENNE = modele('cap-alopecie-androgenetique', 'Traitement alopécie androgénétique (état du 22/08 07:08)', { inc: INC_ALOPECIE_ANCIENNE, exc: EXC, categorie: 'capillaire' });
 const TROP = modele('banc-trop', 'Banc : 6 nuits de clinique sur 2', duree(3, 2, sejour('6 nuits en clinique', "1 nuit d'hôtel 5★")));
 const SOMME = modele('banc-somme', 'Banc : 1 + 3 sur 5', duree(6, 5, sejour('1 nuit en clinique', "3 nuits d'hôtel 5★")));
+/* Une ligne HORS de la convention « nuits = jours − 1 » mais qui respecte
+   l'invariant (4 nuits de clinique sur 4 nuits). Le catalogue n'en a pas ; la
+   règle doit pourtant tenir pour TOUTE donnée où clinique ≤ nuits — c'est ce
+   que la démonstration affirme. Avec elle dans le banc des paires, mesurer le
+   plus long « en jours d'abord » rougit ; en jours seuls, la blépharoplastie
+   suffisait déjà. */
+const HORS_CONVENTION = modele('banc-hors-convention', 'Banc : 4 j / 4 n, tout en clinique', duree(4, 4, sejour('4 nuits en clinique')));
 
 /* ---- défauts des Paramètres, relevés le 22 août (= DEFAULT_INC de lib/defaults.ts) ---- */
 const DEFAUTS = {
@@ -216,8 +223,9 @@ console.log('\n=== 5. planifierNuits — séjour du plus long, clinique = maximu
   v('dentaire seul → pas de séjour ; [] → pas de séjour',
     planifierNuits([DENT]) === undefined && planifierNuits([]) === undefined);
 
-  /* Les deux invariants, rejoués sur TOUTES les paires du banc à séjour déclaré. */
-  const avecSejour = TOUS.filter((x) => x.dureeNuits !== null);
+  /* Les deux invariants, rejoués sur TOUTES les paires du banc à séjour déclaré —
+     les lignes réelles, plus la ligne hors convention. */
+  const avecSejour = [...TOUS.filter((x) => x.dureeNuits !== null), HORS_CONVENTION];
   let paires = 0;
   let fautes = 0;
   for (const a of avecSejour) for (const b of avecSejour) {
@@ -228,6 +236,8 @@ console.log('\n=== 5. planifierNuits — séjour du plus long, clinique = maximu
   }
   v(`toutes les paires (${paires}) : total = séjour, clinique ≥ l'acte le plus exigeant, hôtel ≥ 0, 0 incohérence`,
     fautes === 0, `${fautes} faute(s)`);
+  v('hors convention (4 j / 4 n tout en clinique) + Lipofilling mammaire (5 j / 4 n) : 4 = 4 + 0 — aucun hôtel inventé',
+    egal(chiffres(planifierNuits([MAMMAIRE, HORS_CONVENTION])), [4, 4, 0]) && !planifierNuits([MAMMAIRE, HORS_CONVENTION])?.ligneHotel);
 
   /* Une donnée qui viole l'invariant : on ne devine pas. */
   const x = planifierNuits([RHINO, TROP]);

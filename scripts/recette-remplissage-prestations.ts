@@ -104,6 +104,13 @@ const SOMME = modele('banc-somme', 'Banc : 1 + 3 sur 5', duree(6, 5, sejour('1 n
    plus long « en jours d'abord » rougit ; en jours seuls, la blépharoplastie
    suffisait déjà. */
 const HORS_CONVENTION = modele('banc-hors-convention', 'Banc : 4 j / 4 n, tout en clinique', duree(4, 4, sejour('4 nuits en clinique')));
+/* Et son pendant : plus de jours, moins de nuits (5 j / 3 n). Ensemble, les
+   deux font que jours et nuits ne vont plus dans le même sens — c'est LÀ que
+   « jours d'abord, nuits en départage » tombe (5 j l'emporte, séjour 3, et 4
+   nuits de clinique à loger). Sur le catalogue réel, où nuits = jours − 1
+   partout sauf la blépharoplastie, cette variante passait : le banc doit
+   porter ce que la base ne porte pas encore. */
+const HORS_CONVENTION_2 = modele('banc-hors-convention-2', 'Banc : 5 j / 3 n, des jours sans nuit', duree(5, 3, sejour('1 nuit en clinique', "2 nuits d'hôtel 5★")));
 
 /* ---- défauts des Paramètres, relevés le 22 août (= DEFAULT_INC de lib/defaults.ts) ---- */
 const DEFAUTS = {
@@ -225,7 +232,7 @@ console.log('\n=== 5. planifierNuits — séjour du plus long, clinique = maximu
 
   /* Les deux invariants, rejoués sur TOUTES les paires du banc à séjour déclaré —
      les lignes réelles, plus la ligne hors convention. */
-  const avecSejour = [...TOUS.filter((x) => x.dureeNuits !== null), HORS_CONVENTION];
+  const avecSejour = [...TOUS.filter((x) => x.dureeNuits !== null), HORS_CONVENTION, HORS_CONVENTION_2];
   let paires = 0;
   let fautes = 0;
   for (const a of avecSejour) for (const b of avecSejour) {
@@ -238,6 +245,9 @@ console.log('\n=== 5. planifierNuits — séjour du plus long, clinique = maximu
     fautes === 0, `${fautes} faute(s)`);
   v('hors convention (4 j / 4 n tout en clinique) + Lipofilling mammaire (5 j / 4 n) : 4 = 4 + 0 — aucun hôtel inventé',
     egal(chiffres(planifierNuits([MAMMAIRE, HORS_CONVENTION])), [4, 4, 0]) && !planifierNuits([MAMMAIRE, HORS_CONVENTION])?.ligneHotel);
+  v('5 j / 3 n + 4 j / 4 n : le plus long est celui des 4 NUITS (pas des 5 jours) → 4 = 4 + 0',
+    egal(chiffres(planifierNuits([HORS_CONVENTION_2, HORS_CONVENTION])), [4, 4, 0])
+    && planifierNuits([HORS_CONVENTION_2, HORS_CONVENTION])?.de.id === HORS_CONVENTION.id);
 
   /* Une donnée qui viole l'invariant : on ne devine pas. */
   const x = planifierNuits([RHINO, TROP]);

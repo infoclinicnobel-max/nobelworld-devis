@@ -49,6 +49,12 @@ const DEVIS: { numero: string; statut: string; chirurgien: string; dateIntervent
   { numero: 'D-2026-000033', statut: 'envoye', chirurgien: 'Anvar Ahmedov', dateIntervention: '2026-08-12' },
   { numero: 'D-2026-000041', statut: 'envoye', chirurgien: 'Anvar Ahmedov', dateIntervention: '2026-09-17' },
   { numero: 'D-2026-000043', statut: 'brouillon', chirurgien: '', dateIntervention: '' },
+  /* D-46 : valeur du relevé du 22 août au soir. CORRIGÉE EN BASE le 22 août à
+     11:38:29 UTC (Veys : c'était bien le 5 janvier 2027). Le banc garde la
+     valeur d'avant — c'est le cas qui a motivé la garde — et le dit : depuis
+     cette correction, la base ne porte plus que TROIS dates passées (D-29,
+     D-30, D-33), et la fiche de Sherline recevra UNE entrée de journal, pas
+     deux. Un banc éprouve un mécanisme ; il ne décrit pas la base, qui bouge. */
   { numero: 'D-2026-000046', statut: 'envoye', chirurgien: 'AANVAR AHMEDOV', dateIntervention: '2026-01-05' },
 ];
 const doc = (o: Partial<DocRecord> = {}): DocRecord =>

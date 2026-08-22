@@ -202,15 +202,29 @@ export function detecterAmbiguites(modeles: Modele[], recherche: string): Ambigu
       doublon : la clé de comparaison est celle du sélecteur (cleLibelle —
       casse, accents, espaces). Une ligne déjà là ne s'ajoute pas une seconde
       fois ; une ligne absente s'ajoute à la fin, dans l'ordre du catalogue.
-   ② NUITS — « 2 nuits en clinique », « 4 nuits d'hôtel 5★ » — viennent d'UN
-      SEUL acte : le plus long du devis (duree_sejour_jours). Deux actes ne
-      s'additionnent pas en nuits : la patiente fait un séjour, pas deux. Sans
-      durée au catalogue, pas de nuits — rien n'est deviné.
+      On n'aligne pas les mots : deux vocabulaires coexistent parce que deux
+      natures coexistent — le dentaire dit « anesthésie » parce qu'elle est
+      locale, l'esthétique « anesthésie générale ». Un devis mixte porte les
+      deux lignes, et c'est juste.
+   ② NUITS — la patiente fait UN séjour, pas deux. Le séjour (nuits totales)
+      est celui de l'acte le plus long (duree_nuits) ; les nuits de clinique
+      sont le MAXIMUM que réclame un acte ; les nuits d'hôtel sont le reste.
+      Sleeve (4 j / 3 n : 2 + 1) + rhinoplastie (6 j / 5 n : 1 + 4) → séjour 5,
+      clinique 2, hôtel 3. Deux invariants, que chaque règle plus simple
+      brisait : le total ne dépasse jamais le séjour (« le maximum par
+      nature » promettait 6 nuits sur 5) ; la clinique n'est jamais en dessous
+      de l'acte le plus exigeant (« le plus long et lui seul » couchait une
+      patiente bariatrique une seule nuit). La règle est sûre tant qu'aucune
+      ligne du catalogue ne promet plus de nuits de clinique qu'elle n'a de
+      nuits — mesuré le 22 août : 0 écart sur 66 — et verifierSejours le
+      contrôle en permanence, pas une fois. Sans durée au catalogue, pas de
+      nuits : rien n'est deviné.
    ③ Le remplissage se déclenche à la SÉLECTION seulement, et n'écrase jamais
       ce qu'une main a écrit. Ce que le système a écrit lui-même — les défauts
-      des Paramètres, le vocabulaire du catalogue — il peut le remplacer ; ce
-      qu'il ne reconnaît pas, il le laisse. Il ne RETIRE jamais rien : une
-      ligne de trop se supprime à la main, comme avant.
+      des Paramètres, le vocabulaire du catalogue, un nombre de nuits qu'il a
+      calculé — il peut le remplacer ; ce qu'il ne reconnaît pas, il le laisse
+      et le DIT. Il ne RETIRE jamais rien : une ligne de trop se supprime à la
+      main, comme avant.
 
    Conséquence : une liste encore égale aux défauts des Paramètres (devis neuf,
    rien touché) ou vide est remplacée franchement par le catalogue — c'est le
@@ -230,20 +244,148 @@ export function natureLigne(ligne: unknown): NatureLigne {
   return 'service';
 }
 
-const NATURES_NUIT: NatureLigne[] = ['clinique', 'hotel'];
+/** Le nombre en tête d'une ligne de nuits — « 2 nuits en clinique » → 2 ; absent → null. */
+export function nombreDeNuits(ligne: unknown): number | null {
+  const m = /^(\d+)\s+nuits?\b/.exec(cleLibelle(ligne));
+  return m ? Number(m[1]) : null;
+}
 
-/** Durée de séjour d'un modèle, pour désigner « le plus long » ; -1 quand le catalogue n'en porte pas. */
-const dureeDe = (m: Modele): number => m.dureeJours ?? m.dureeNuits ?? -1;
+/** La même ligne avec un autre nombre, singulier et pluriel compris — le reste mot pour mot. */
+export function renumeroter(ligne: string, n: number): string {
+  return ligne.replace(/^\s*\d+\s+nuits?/i, `${n} ${n > 1 ? 'nuits' : 'nuit'}`);
+}
+
+/* Clé d'une ligne de nuits, nombre effacé : « 1 nuits en clinique » (faute d'un
+   ancien catalogue) et « 2 nuits en clinique » sont la MÊME ligne du système ;
+   « 5 nuits d'hôtel 5★ (négocié) » n'appartient qu'à la main qui l'a écrite. */
+const cleNuit = (ligne: unknown): string => cleLibelle(ligne).replace(/^\d+\s+nuits?\b/, '# nuit');
+
+/* « Le plus long » se mesure en NUITS d'abord, en jours ensuite — pas l'inverse.
+   La démonstration de la règle ② (nuits(B) ≤ nuits(A) pour tout B) le suppose,
+   et le catalogue le fait sentir : la blépharoplastie supérieure est à
+   1 jour / 1 nuit (dictée de Veys) quand Allurion est à 1 jour / 0 nuit. À
+   égalité de jours, prendre Allurion pour le plus long donnait un séjour de
+   0 nuit et 1 nuit de clinique à loger — un hôtel à −1. Mesuré par le banc
+   des paires, pas raisonné. -1 quand le catalogue ne porte rien. */
+const rangDuree = (m: Modele): [number, number] => [m.dureeNuits ?? -1, m.dureeJours ?? -1];
+const plusLongQue = (a: Modele, b: Modele): boolean => {
+  const [na, ja] = rangDuree(a);
+  const [nb, jb] = rangDuree(b);
+  return na > nb || (na === nb && ja > jb);
+};
 
 /* Le plus long des actes résolus. Ex æquo : le PREMIER du devis garde la main —
-   ajouter un second acte de même durée ne fait pas basculer les nuits. Aucune
+   ajouter un second acte de même durée ne fait pas basculer le séjour. Aucune
    durée nulle part → aucun acte ne fait foi. */
 export function acteLePlusLong(actes: Modele[]): Modele | undefined {
   let meilleur: Modele | undefined;
   for (const m of actes) {
-    if (dureeDe(m) >= 0 && (!meilleur || dureeDe(m) > dureeDe(meilleur))) meilleur = m;
+    if (rangDuree(m)[0] < 0 && rangDuree(m)[1] < 0) continue;
+    if (!meilleur || plusLongQue(m, meilleur)) meilleur = m;
   }
   return meilleur;
+}
+
+const lignesNuit = (m: Modele, nature: NatureLigne): string[] =>
+  (m.inc || []).filter((l) => natureLigne(l) === nature);
+
+const maxNuits = (m: Modele, nature: NatureLigne): number | null => {
+  let max: number | null = null;
+  for (const l of lignesNuit(m, nature)) {
+    const n = nombreDeNuits(l);
+    if (n !== null && (max === null || n > max)) max = n;
+  }
+  return max;
+};
+
+/** Nuits de clinique qu'une ligne du catalogue réclame ; null si elle n'en dit rien. */
+export const cliniqueDe = (m: Modele): number | null => maxNuits(m, 'clinique');
+/** Nuits d'hôtel qu'une ligne du catalogue promet ; null si elle n'en dit rien. */
+export const hotelDe = (m: Modele): number | null => maxNuits(m, 'hotel');
+
+/* ---- LE CONTRÔLE PERMANENT — ce qui rend la règle ② sûre ----
+
+   Pour tout acte B, clinique(B) ≤ nuits(B) ; et nuits(B) ≤ nuits(A) par
+   définition de A comme le plus long ; donc max(clinique) ≤ nuits(A) et le
+   reste d'hôtel n'est jamais négatif. La première inégalité est une propriété
+   de la DONNÉE, pas du code : elle cesse d'être vraie le jour où une ligne du
+   catalogue promet plus de nuits de clinique qu'elle n'a de nuits. D'où ce
+   contrôle, relu à chaque chargement (la Bibliothèque l'affiche) et rejoué par
+   la recette — jamais « vérifié une fois ». Il dit aussi ce qu'un filtre
+   d'écriture aurait pu rater : une ligne sans durée qui promet des nuits
+   (le cas alopécie du 22 août), un nombre qui manque. */
+export function verifierSejours(modeles: Modele[]): string[] {
+  const out: string[] = [];
+  for (const m of modeles) {
+    const promises = [...lignesNuit(m, 'clinique'), ...lignesNuit(m, 'hotel')];
+    const sansNombre = promises.filter((l) => nombreDeNuits(l) === null);
+    if (sansNombre.length) out.push(`${m.nom} : ligne de nuits sans nombre — « ${sansNombre.join(' », « ')} »`);
+    if (m.dureeNuits === null) {
+      if (promises.length) out.push(`${m.nom} : sans durée au catalogue, mais promet « ${promises.join(' », « ')} »`);
+      continue;
+    }
+    const c = cliniqueDe(m) ?? 0;
+    const h = hotelDe(m) ?? 0;
+    if (c > m.dureeNuits) out.push(`${m.nom} : ${c} nuit(s) de clinique pour un séjour de ${m.dureeNuits} nuit(s)`);
+    if (c + h !== m.dureeNuits) out.push(`${m.nom} : clinique ${c} + hôtel ${h} ≠ ${m.dureeNuits} nuit(s) de séjour`);
+  }
+  return out;
+}
+
+export interface PlanNuits {
+  /** L'acte le plus long : il donne le séjour, et la ligne d'hôtel à renuméroter. */
+  de: Modele;
+  sejour: number;
+  clinique: number;
+  hotel: number;
+  /** Les lignes à écrire — absentes quand le séjour n'en compte pas. */
+  ligneClinique?: string;
+  ligneHotel?: string;
+  /** Ce qui a empêché de calculer : on reprend alors les nuits du plus long telles quelles, et on le dit. */
+  incoherences: string[];
+}
+
+/* La règle ② en code. Le porteur de la ligne de clinique est l'acte qui
+   réclame le maximum — sa ligne part MOT POUR MOT (« 2 nuits en clinique » de
+   la sleeve) ; la ligne d'hôtel est celle du plus long, renumérotée au reste.
+   Quand le calcul est impossible (pas de nombre de nuits, ou une donnée qui
+   viole l'invariant), on ne devine pas : les nuits du plus long, telles
+   quelles, et une incohérence à afficher. */
+export function planifierNuits(actes: Modele[]): PlanNuits | undefined {
+  const de = acteLePlusLong(actes);
+  if (!de) return undefined;
+  const incoherences: string[] = [];
+  const tellesQuelles = (): PlanNuits => ({
+    de, sejour: de.dureeNuits ?? 0, clinique: cliniqueDe(de) ?? 0, hotel: hotelDe(de) ?? 0,
+    ligneClinique: lignesNuit(de, 'clinique')[0], ligneHotel: lignesNuit(de, 'hotel')[0], incoherences,
+  });
+  if (de.dureeNuits === null) {
+    incoherences.push(`« ${de.nom} » n'a pas de nombre de nuits au catalogue : ses lignes sont reprises telles quelles`);
+    return tellesQuelles();
+  }
+  const sejour = de.dureeNuits;
+  let clinique = 0;
+  let porteur: Modele | undefined;
+  for (const m of [de, ...actes.filter((x) => x !== de)]) {
+    const c = cliniqueDe(m);
+    if (c === null) continue;
+    if (m.dureeNuits !== null && c > m.dureeNuits) {
+      incoherences.push(`« ${m.nom} » promet ${c} nuit(s) de clinique pour un séjour de ${m.dureeNuits} nuit(s)`);
+    }
+    if (c > clinique) { clinique = c; porteur = m; }
+  }
+  const hotel = sejour - clinique;
+  if (hotel < 0) {
+    incoherences.push(`${clinique} nuit(s) de clinique dépassent le séjour de ${sejour} nuit(s) : nuits de « ${de.nom} » reprises telles quelles`);
+    return tellesQuelles();
+  }
+  const ligneClinique = porteur ? lignesNuit(porteur, 'clinique').find((l) => nombreDeNuits(l) === clinique) : undefined;
+  const modeleHotel = lignesNuit(de, 'hotel')[0];
+  const ligneHotel = modeleHotel && hotel > 0 ? renumeroter(modeleHotel, hotel) : undefined;
+  if (!modeleHotel && hotel > 0) {
+    incoherences.push(`le séjour laisse ${hotel} nuit(s) d'hôtel, mais « ${de.nom} » n'en porte aucune ligne au catalogue`);
+  }
+  return { de, sejour, clinique, hotel, ligneClinique, ligneHotel, incoherences };
 }
 
 /* Les modèles qu'un devis désigne par ses lignes d'acte : égalité avec le
@@ -275,11 +417,15 @@ export interface ContexteRemplissage {
 export interface Remplissage {
   inc: string[];
   exc: string[];
-  /** L'acte dont les nuits font foi — absent quand aucun acte résolu ne porte de durée. */
+  /** L'acte qui donne le séjour — absent quand aucun acte résolu ne porte de durée. */
   nuitsDe?: Modele;
+  /** Le séjour calculé (règle ②), absent sans durée. */
+  nuits?: PlanNuits;
   /** Ce qui a été fait, pour le DIRE à l'écran — jamais pour décider. */
   ajoutees: string[];
   remplacees: { avant: string; apres: string }[];
+  /** Ce que la règle aurait écrit mais qu'une main avait déjà écrit autrement : laissé, et dit. */
+  laissees: string[];
 }
 
 const clesDe = (lignes: string[] | undefined): string[] => (lignes || []).map(cleLibelle).filter(Boolean);
@@ -298,19 +444,22 @@ export function remplirPrestations(
   contexte: ContexteRemplissage,
 ): Remplissage {
   const actes = actesResolus.includes(nouveau) ? actesResolus : [...actesResolus, nouveau];
-  const nuitsDe = acteLePlusLong(actes);
-  /* L'acte qui donne l'ORDRE des lignes : celui des nuits s'il existe, sinon celui qu'on vient de choisir. */
+  const nuits = planifierNuits(actes);
+  const nuitsDe = nuits?.de;
+  /* L'acte qui donne l'ORDRE des lignes : celui du séjour s'il existe, sinon celui qu'on vient de choisir. */
   const principal = nuitsDe || nouveau;
   const ordonnes = [principal, ...actes.filter((m) => m !== principal)];
 
-  /* Vocabulaire « du système » : ce qu'il a pu écrire lui-même, donc ce qu'il peut remplacer. */
-  const vocabulaire = new Set<string>([
-    ...clesDe(contexte.defauts.inc),
-    ...clesDe(contexte.defauts.exc),
-    ...contexte.modeles.flatMap((m) => [...clesDe(m.inc), ...clesDe(m.exc)]),
-  ]);
+  /* Vocabulaire « du système » pour les nuits : ce qu'il a pu écrire lui-même —
+     nombre effacé, puisqu'il le calcule — donc ce qu'il peut remplacer. */
+  const vocabulaireNuits = new Set<string>(
+    [...contexte.defauts.inc, ...contexte.modeles.flatMap((m) => m.inc || [])]
+      .filter((l) => natureLigne(l) !== 'service')
+      .map(cleNuit),
+  );
   const ajoutees: string[] = [];
   const remplacees: { avant: string; apres: string }[] = [];
+  const laissees: string[] = [];
 
   /* ---- incluses ---- */
   const viergeInc = !clesDe(courant.inc).length || memeListe(courant.inc, contexte.defauts.inc);
@@ -323,25 +472,44 @@ export function remplirPrestations(
     vues.add(cle);
     ajoutees.push(ligne);
   };
-  /* ② — une nuit vient du plus long et de lui seul ; elle prend la place d'une
-     nuit de même nature écrite par le système, jamais celle d'une main. */
+  /* ② — la ligne de nuits calculée prend la place d'une nuit de même nature
+     écrite par le système, jamais celle d'une main : celle-là reste, et on le dit. */
   const placerNuit = (voulue: string) => {
     const nature = natureLigne(voulue);
     const i = inc.findIndex((l) => natureLigne(l) === nature);
     if (i < 0) { ajouter(inc, presentes, voulue); return; }
     const avant = inc[i];
-    if (cleLibelle(avant) === cleLibelle(voulue) || !vocabulaire.has(cleLibelle(avant))) return;
+    if (cleLibelle(avant) === cleLibelle(voulue)) return;
+    if (!vocabulaireNuits.has(cleNuit(avant))) {
+      laissees.push(`« ${avant} » est écrite à la main : conservée (le séjour dirait « ${voulue} »)`);
+      return;
+    }
     inc[i] = voulue;
     presentes.delete(cleLibelle(avant));
     presentes.add(cleLibelle(voulue));
     remplacees.push({ avant, apres: voulue });
   };
+  const voulues: Partial<Record<NatureLigne, string>> = {
+    clinique: nuits?.ligneClinique, hotel: nuits?.ligneHotel,
+  };
+  const placees = new Set<NatureLigne>();
   for (const m of ordonnes) {
     for (const ligne of m.inc || []) {
-      if (natureLigne(ligne) === 'service') ajouter(inc, presentes, ligne);
-      else if (m === nuitsDe) placerNuit(ligne);
-      /* une nuit d'un acte qui n'est pas le plus long : ignorée, par construction */
+      const nature = natureLigne(ligne);
+      if (nature === 'service') { ajouter(inc, presentes, ligne); continue; }
+      /* Une nuit ne se recopie jamais d'un acte : elle se CALCULE (règle ②), et
+         se pose à l'endroit où le plus long la met. Sans séjour, aucune nuit. */
+      if (m !== principal || placees.has(nature)) continue;
+      const voulue = voulues[nature];
+      if (voulue) placerNuit(voulue);
+      placees.add(nature);
     }
+  }
+  /* Le séjour peut réclamer une nuit que le plus long n'annonce pas à cet
+     endroit (sa clinique vient d'un autre acte) : elle se pose à la fin. */
+  for (const nature of ['clinique', 'hotel'] as const) {
+    const voulue = voulues[nature];
+    if (voulue && !placees.has(nature)) placerNuit(voulue);
   }
 
   /* ---- non incluses : union, sans doublon, jamais de retrait ---- */
@@ -350,9 +518,5 @@ export function remplirPrestations(
   const presentesExc = new Set(clesDe(exc));
   for (const m of ordonnes) for (const ligne of m.exc || []) ajouter(exc, presentesExc, ligne);
 
-  return { inc, exc, nuitsDe, ajoutees, remplacees };
+  return { inc, exc, nuitsDe, nuits, ajoutees, remplacees, laissees };
 }
-
-/* Une nature de nuit que NATURES_NUIT ne nomme pas n'existe pas : la liste
-   est le contrat de placerNuit, exportée pour que la recette le vérifie. */
-export const NATURES_DE_NUIT: readonly NatureLigne[] = NATURES_NUIT;

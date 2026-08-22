@@ -20,7 +20,9 @@ import {
   devisEstClasse, devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf,
   validiteDepassee,
 } from '@/lib/calc';
-import { modelesDesActes, nettoyerActes, remplirPrestations, type Remplissage } from '@/lib/catalogue';
+import {
+  modelesDesActes, natureLigne, nettoyerActes, remplirPrestations, type Remplissage,
+} from '@/lib/catalogue';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -497,24 +499,38 @@ export function DevisEditor({
      catalogue évolue. */
   const descriptionDe = (m: Modele) => (typeof m.description === 'string' ? m.description : '');
 
-  /* Le toast DIT ce qui a été fait aux prestations — il ne décide de rien. */
-  const signaler = (m: Modele, description: string, prestations?: Remplissage) => {
+  /* Le toast DIT ce qui a été fait aux prestations — il ne décide de rien. Un
+     modèle sans prestation au catalogue (un supplément) ne passe pas en
+     silence : « rien rempli » est une information, « déjà à jour » serait un
+     mensonge — c'est ainsi que « 4 nuits en clinique » est parti chez une
+     patiente le 17 août, sur un devis dont le modèle était un supplément. */
+  const signaler = (m: Modele, description: string, prestations?: Remplissage, commeModele = false) => {
     const alertes: string[] = [];
     if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
     if (!description.trim()) alertes.push('aucune description au catalogue, à rédiger à la main');
+    if (commeModele && m.nature === 'supplement') {
+      alertes.push("un supplément ne porte pas de séjour : prenez l'acte principal comme modèle");
+    }
     const faits: string[] = [];
     if (prestations) {
+      if (!(m.inc || []).length && !(m.exc || []).length) {
+        faits.push('aucune prestation au catalogue pour ce modèle — rien rempli');
+      }
       const n = prestations.ajoutees.length;
       if (n) faits.push(`${n} prestation${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''}`);
-      if (prestations.remplacees.length && prestations.nuitsDe) {
-        faits.push(`nuits alignées sur « ${prestations.nuitsDe.nom} »`);
+      const p = prestations.nuits;
+      const nuitsBougent = prestations.remplacees.length > 0
+        || prestations.ajoutees.some((l) => natureLigne(l) !== 'service');
+      if (p && nuitsBougent) {
+        faits.push(`nuits : ${p.clinique} en clinique + ${p.hotel} à l'hôtel sur ${p.sejour} (séjour de « ${p.de.nom} »)`);
       }
       if (!faits.length) faits.push('prestations déjà à jour');
+      alertes.push(...prestations.laissees, ...(p?.incoherences || []));
     }
     toast(
       'Modèle appliqué : ' + m.nom
         + (faits.length ? ' — ' + faits.join(', ') : '')
-        + (alertes.length ? ' — ' + alertes.join(' ; ') : ''),
+        + (alertes.length ? ' ⚠ ' + alertes.join(' ; ') : ''),
     );
   };
 
@@ -527,7 +543,7 @@ export function DevisEditor({
      rien), puis la fusion de lib/catalogue.ts décide. Les listes restent
      éditables ligne à ligne ; ce qu'une main a écrit n'est jamais écrasé, rien
      n'est jamais retiré. */
-  const acteDepuisModele = (m: Modele) => {
+  const acteDepuisModele = (m: Modele, opts: { commeModele?: boolean } = {}) => {
     const description = descriptionDe(m);
     const actes = [...(f.actes || [])];
     const vide = actes.findIndex((a) => !String(a.acte || '').trim() && !String(a.inclus || '').trim());
@@ -541,7 +557,7 @@ export function DevisEditor({
       { modeles: data.modeles, defauts: composeIncExc(data.parametres) },
     );
     setF((s) => ({ ...s, actes, inc: prestations.inc, exc: prestations.exc }));
-    signaler(m, description, prestations);
+    signaler(m, description, prestations, !!opts.commeModele);
   };
 
   const optDepuisModele = (m: Modele) => {
@@ -615,7 +631,7 @@ export function DevisEditor({
      scripts/recette-remplissage-prestations.ts). */
   const applyModele = (m: Modele) => {
     setF((s) => ({ ...s, modeleId: m.id, forfait: Number(s.forfait) || m.prixBase }));
-    acteDepuisModele(m);
+    acteDepuisModele(m, { commeModele: true });
   };
 
   const total = totalOf(f);

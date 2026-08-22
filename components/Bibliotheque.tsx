@@ -7,6 +7,7 @@ import { useApp } from './AppContext';
 import { money, safeLower } from '@/lib/format';
 import { can } from '@/lib/perms';
 import { UNSAVED_MSG } from '@/lib/defaults';
+import { verifierSejours } from '@/lib/catalogue';
 import type { OptionCat } from '@/lib/types';
 
 /* =========================================================================
@@ -31,6 +32,11 @@ export function ModelesView() {
      « tout valider » — ni maintenant ni jamais : chaque correspondance engage
      un tarif, et sa relecture appartient à Veys, une par une, côté CRM. */
   const aVerifier = data.correspondances.filter((c) => c.catalogueId && c.statut === 'a_verifier');
+  /* Le contrôle PERMANENT des séjours (lib/catalogue.ts, verifierSejours) : la
+     règle des nuits n'est sûre que si aucune ligne ne promet plus de nuits de
+     clinique qu'elle n'a de nuits. Mesuré le 22 août : 0 écart — mais une
+     mesure date, un contrôle relu à chaque chargement ne date pas. */
+  const sejoursIncoherents = verifierSejours(data.modeles);
 
   return (
     <>
@@ -81,6 +87,20 @@ export function ModelesView() {
           ⚠ {aVerifier.length} correspondance(s) de libellés attendent une relecture côté CRM. Tant qu&apos;elles ne
           sont pas validées, ces libellés d&apos;usage n&apos;étendent pas la recherche du sélecteur — une
           correspondance non relue qui composerait un devis serait un tarif engagé sans relecture.
+        </div>
+      )}
+
+      {!!sejoursIncoherents.length && (
+        <div
+          className="card card-pad"
+          style={{
+            marginBottom: 16, background: '#fff7e8', border: '1px solid #f0dcae',
+            color: '#7a5d1f', fontSize: 12.5, lineHeight: 1.6,
+          }}
+        >
+          ⚠ {sejoursIncoherents.length} ligne(s) du catalogue dont les nuits ne se tiennent pas. Sur un devis, le
+          remplissage des prestations reprend alors les nuits de l&apos;acte telles quelles, sans calcul, et le dit.
+          La correction se fait côté CRM : {sejoursIncoherents.join(' · ')}.
         </div>
       )}
 

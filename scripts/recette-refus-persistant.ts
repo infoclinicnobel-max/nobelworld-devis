@@ -177,6 +177,13 @@ console.log('\n=== 5. Garde de source — l\'évaluation précède le raccourci,
      qui décide de journaliser, qui porte les mêmes mots un peu plus haut. */
   const iRaccourci = corps.indexOf("if (engagement === 'aucun' && !forcer) {");
   v('remonterVersFiche évalue le document AVANT le raccourci d\'engagement', iEval > 0 && iRaccourci > 0 && iEval < iRaccourci);
+  /* La limite nommée, fixée pour qu'on la voie bouger : la facture vivante rend
+     la main AVANT l'évaluation. Le devis d'Alma (F-2026-000016 envoyée) ne
+     journalise donc rien — c'est voulu aujourd'hui (le devis ne parle plus au
+     CRM), et ce contrôle rougira le jour où l'ordre change, pour que le
+     changement soit décidé, pas subi. */
+  const iFactureVivante = corps.indexOf('factureEstVivante(f.statut)');
+  v('… mais la facture vivante rend la main AVANT l\'évaluation : limite nommée (Alma)', iFactureVivante > 0 && iFactureVivante < iEval);
   v('… et journalise les refus (journaliserRefus) avant de rendre la main', corps.indexOf('journaliserRefus(') > 0 && corps.indexOf('journaliserRefus(') < iRaccourci);
   v('… passe `aujourdhui` à planifierRemontee', /planifierRemontee\(devis[\s\S]*?aujourdhui[\s\S]*?\}\)/.test(corps));
   v('… écrit le second journal (nw_historique) pour chaque refus nouveau', /for \(const n of journalRefus\.nouvelles\)[\s\S]*?journaliser\(/.test(corps));

@@ -199,7 +199,12 @@ export interface PlanRemontee {
    d'Alma inscrite sur la liste de Veys était la réparation à la main de ce
    bogue, et personne n'avait relié le symptôme à la cause.
 
-   DEUX LIMITES, nommées pour qu'on ne croie pas le sujet clos :
+   TROIS LIMITES, nommées pour qu'on ne croie pas le sujet clos :
+   · Une FACTURE VIVANTE rend la main avant toute évaluation (lib/data.ts :
+     « c'est elle qui parle au CRM ») — et la facture ne parle qu'à sa
+     création. Alma (F-2026-000016 envoyée) : rouvrir son devis n'évalue rien,
+     ne journalise rien ; sa fiche se répare à la main, ou par une remontée à
+     l'enregistrement de la facture, qui n'existe pas.
    · Ce lot protège l'INSTANT DE L'ENREGISTREMENT ; il ne surveille pas ce qui
      dort. D-2026-000029 (opération au 2 juin) et D-2026-000030 (16 août),
      brouillons de plus d'un mois, ne produiront rien tant que personne ne les

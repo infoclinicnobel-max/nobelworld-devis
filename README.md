@@ -222,7 +222,13 @@ Autres invariants :
   **quatre fiches vides** depuis le 4 juillet (Tresor « Dr Azar », Munao « Dr Anvar », Alma
   « Dr Anvar », Benabedrabou « AANVAR AHMEDOV ») — la « réparation manuelle » d'Alma
   inscrite sur la liste de Veys était la réparation à la main de ce bogue. Rouvrir et
-  corriger leurs devis répare les fiches **avec la raison écrite**. Un dossier **clôturé**
+  corriger leurs devis répare les fiches **avec la raison écrite** — Tresor et Munao, dont
+  les factures sont annulées. **Pas Alma** : sa facture F-2026-000016 est vivante
+  (`envoye`), et la hiérarchie des documents rend la main **avant** toute évaluation — le
+  devis ne parle plus au CRM, rien n'est évalué ni journalisé, ni avant ni après ce lot ; sa
+  fiche se répare à la main côté CRM, ou par une remontée à l'enregistrement de la facture,
+  qui n'existe pas (la facture ne parle qu'à sa création) — lot à part, non construit. Un
+  dossier **clôturé**
   n'est pas une exception : rouvrir son document, c'est le modifier, et le refus y explique
   un vide qu'aucun journal n'expliquait (choix du 22 août, fixé par la recette). ⚠ **Limite
   nommée** : ce lot protège l'instant de l'enregistrement, il **ne surveille pas ce qui

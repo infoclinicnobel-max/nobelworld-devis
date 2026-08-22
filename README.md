@@ -174,6 +174,23 @@ Autres invariants :
   si un refactor les assouplit). Un classé reste **facturable**, avec la mention
   « (refusé) / (expiré) » dans le sélecteur — une patiente qui change d'avis ne repart pas
   de zéro. La corbeille n'est ni retirée ni conditionnée.
+- **Le catalogue est branché sur le sélecteur d'actes, et l'écran dit ce qu'un libellé
+  vaut** — décision de Veys du 17 août, construite le 20. La recherche du sélecteur
+  comprend désormais les libellés d'usage de `catalogue_correspondances` au statut
+  **`valide` seulement** : les `a_verifier` ne la nourrissent jamais — un tarif engagé sans
+  relecture — et la recette `scripts/recette-selecteur-catalogue.ts` rougit si ce filtre
+  s'assouplit. Chaque ligne d'acte de l'éditeur porte une **pastille de reconnaissance**
+  (« ✓ au catalogue », « ✓ reconnu : … », « ⚠ correspondance à vérifier : … »,
+  « hors catalogue ») — une lecture superposée, **jamais une écriture** : à la réouverture
+  d'un devis, rien ne se recompose, et le PDF ne la rend pas. ⚠ « hors catalogue » est un
+  **fait, pas une alerte** (12 libellés sur 29, dont des combos légitimes) : ne pas le
+  transformer en « à corriger », la neutralité est ce qui rend l'affichage permanent
+  tenable. La comparaison efface casse et accents (`cleLibelle`) : la table de
+  correspondances portait quatre paires de pure typographie — huit lignes sur 56,
+  retirables côté CRM. Les lignes d'acte entièrement vides ne partent plus à
+  l'enregistrement (`nettoyerActes` — deux devis émis en portaient une) ; rien de
+  rétroactif. La Bibliothèque affiche le compte des correspondances en attente de
+  relecture — une ligne, pas de bouton « tout valider », ni maintenant ni jamais.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

@@ -156,6 +156,19 @@ console.log('\n=== 3 bis. Les deux factures vivantes du recensement — bancs po
     champs(pS.refus) === 'medecin' && !('medecin' in pS.aEcrire));
   v('… sa date, déjà sur la fiche et identique, n\'est ni réécrite ni en divergence',
     !('dateOperation' in pS.aEcrire) && pS.dejaConformes.includes("date d'opération"));
+  /* Sofia après la main du 22 août 13 h 50 : sa fiche porte « Dr Anvar Ahmedov »
+     (posé par un humain), son devis porte toujours « AANVAR AHMEDOV ». Le banc
+     exact de « ne jamais écraser » : la valeur humaine reste, l'écart est DIT
+     (divergence), la faute du document est refusée et journalisable — et rien
+     ne s'écrit. (Par son devis, rien ne serait même évalué : F-28 est vivante ;
+     c'est la règle du PLAN qui est fixée ici, celle qu'emprunterait tout
+     document qui parle.) */
+  const sofiaReparee = fiche({ prenom: 'SOFIA', nom: 'BENABEDRABOU', stade: 'Confirmé', medecin: 'Dr Anvar Ahmedov', dateOperation: '2026-09-06', dateDevis: '2026-08-11', budget: '5500' });
+  const pH = planifierRemontee(doc(f28), sofiaReparee, { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
+  v('fiche réparée à la main + document fautif : la valeur humaine n\'est PAS touchée', !('medecin' in pH.aEcrire));
+  v('… l\'écart est DIT comme divergence (CRM « Dr Anvar Ahmedov » / document « AANVAR AHMEDOV »)',
+    pH.divergences.some((d) => d.colonne === 'medecin' && d.valeurCrm === 'Dr Anvar Ahmedov' && d.valeurDevis === 'AANVAR AHMEDOV'));
+  v('… et le refus du document subsiste — la faute est toujours sur le devis', champs(pH.refus) === 'medecin');
   // F-2026-000016 — Alma : ORPHELINE. Sans devis, sans chirurgien, sans date. Elle gagne par son rang, et ne porte rien.
   const f16: Partial<DocRecord> = { numero: 'F-2026-000016', date: '2026-07-28', chirurgien: '', dateIntervention: '', forfait: 6400, actes: [], statut: 'envoye' };
   const almaReparee = fiche({ prenom: 'Gaëlle', nom: 'Alma', stade: 'Confirmé', medecin: 'Dr Anvar Ahmedov', dateOperation: '2027-03-09', dateDevis: '2026-07-28', budget: '6400' });

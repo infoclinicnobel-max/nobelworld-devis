@@ -240,8 +240,15 @@ Autres invariants :
   nommée** : ce lot protège l'instant de l'enregistrement, il **ne surveille pas ce qui
   dort** — D-2026-000029 (opération au 2 juin) et D-2026-000030 (16 août), brouillons de
   plus d'un mois, ne produiront rien tant que personne ne les rouvre. Ce qui les couvre est
-  un **balayage** — un rapport des documents endormis à date passée ou chirurgien inconnu,
-  calculable à chaque chargement depuis les devis déjà en mémoire, jamais un verrou — lot à
+  un **balayage** — un rapport, jamais un verrou, calculable à chaque chargement depuis ce
+  que l'application a déjà en mémoire (devis et fiches), sur le modèle de `verifierSejours`.
+  Trois familles à prévoir dès sa conception (relevé du 22 août) : les documents endormis à
+  **date passée** (D-29, D-30), les documents à **chirurgien inconnu**, et les fiches
+  **« Confirmé » dont la date d'opération est passée** — treize le 22 août, de 5 à 46 jours,
+  parce que les deux stades postopératoires sont en pratique inutilisés (une seule fiche de
+  toute la base à « Post-opératoire ») : « qui a été opérée cette semaine » n'a pas de
+  réponse dans l'outil. Le balayage **signale, un humain tranche** : avancer un stade
+  affirme qu'une opération a eu lieu, fait clinique que l'application ne connaît pas. Lot à
   part, non construit.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste

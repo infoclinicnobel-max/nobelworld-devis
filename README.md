@@ -217,7 +217,20 @@ Autres invariants :
   garde de source : l'évaluation précède le raccourci d'engagement) et `recette-agenda.ts`
   § 4 bis. Écritures : `patients` (`historique` + `updated_at`, `UPDATE` ciblé, colonnes
   nommées) dès l'envoi, et une ligne `nw_historique` — aucune colonne de donnée de plus,
-  aucune table nouvelle.
+  aucune table nouvelle. Recensement du 22 août au soir sur les quinze devis acceptés :
+  onze chirurgiens traduisibles → onze fiches renseignées, quatre non traduisibles →
+  **quatre fiches vides** depuis le 4 juillet (Tresor « Dr Azar », Munao « Dr Anvar », Alma
+  « Dr Anvar », Benabedrabou « AANVAR AHMEDOV ») — la « réparation manuelle » d'Alma
+  inscrite sur la liste de Veys était la réparation à la main de ce bogue. Rouvrir et
+  corriger leurs devis répare les fiches **avec la raison écrite**. Un dossier **clôturé**
+  n'est pas une exception : rouvrir son document, c'est le modifier, et le refus y explique
+  un vide qu'aucun journal n'expliquait (choix du 22 août, fixé par la recette). ⚠ **Limite
+  nommée** : ce lot protège l'instant de l'enregistrement, il **ne surveille pas ce qui
+  dort** — D-2026-000029 (opération au 2 juin) et D-2026-000030 (16 août), brouillons de
+  plus d'un mois, ne produiront rien tant que personne ne les rouvre. Ce qui les couvre est
+  un **balayage** — un rapport des documents endormis à date passée ou chirurgien inconnu,
+  calculable à chaque chargement depuis les devis déjà en mémoire, jamais un verrou — lot à
+  part, non construit.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien

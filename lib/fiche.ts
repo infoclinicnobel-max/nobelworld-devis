@@ -188,7 +188,28 @@ export interface PlanRemontee {
    devis que personne ne regarde plus — ceux qu'on accepte tard.
 
    Le « pourquoi » est STABLE d'un jour à l'autre (pas d'« aujourd'hui » dedans) :
-   c'est la clé de dédoublonnage du journal. */
+   c'est la clé de dédoublonnage du journal.
+
+   Recensement du 22 août au soir, sur les quinze devis acceptés : onze
+   chirurgiens traduisibles → onze fiches renseignées ; quatre non
+   traduisibles → quatre fiches VIDES, sans une contre-épreuve — Tresor
+   (« Dr Azar », 4 juillet), Munao (« Dr Anvar », 24 juillet), Alma
+   (« Dr Anvar », 28 juillet), Benabedrabou (« AANVAR AHMEDOV », 22 août). Le
+   refus tournait depuis sept semaines sans trace ; la « réparation manuelle »
+   d'Alma inscrite sur la liste de Veys était la réparation à la main de ce
+   bogue, et personne n'avait relié le symptôme à la cause.
+
+   DEUX LIMITES, nommées pour qu'on ne croie pas le sujet clos :
+   · Ce lot protège l'INSTANT DE L'ENREGISTREMENT ; il ne surveille pas ce qui
+     dort. D-2026-000029 (opération au 2 juin) et D-2026-000030 (16 août),
+     brouillons de plus d'un mois, ne produiront rien tant que personne ne les
+     rouvre. Ce qui les couvre est un balayage — un rapport, pas un verrou —
+     à construire à part (voir README).
+   · Un dossier CLÔTURÉ n'est pas une exception : rouvrir son document et
+     l'enregistrer, c'est le modifier, et c'est exactement là qu'une trace
+     sert — le refus explique un champ vide qu'aucun journal n'expliquait
+     (Munao, « Clôturé ✓ », medecin vide). Aucune règle de stade ici, comme
+     il n'y en a aucune pour l'écriture des colonnes ; la recette le fixe. */
 export interface Refus {
   /** Colonne de `patients` qui aurait été visée. */
   champ: 'medecin' | 'dateOperation';

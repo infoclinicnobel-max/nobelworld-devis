@@ -123,6 +123,18 @@ console.log('\n=== 3. planifierRemontee — la garde de date dans la boucle d\'�
   const occupee = planifierRemontee(doc(), fiche({ dateOperation: '2026-03-01' }), { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
   v('fiche déjà datée : la date passée du document ne produit ni écriture ni divergence — laissée, dite',
     !('dateOperation' in occupee.aEcrire) && !occupee.divergences.some((d) => d.colonne === 'dateOperation') && occupee.laisses.some((l) => /déjà passée/.test(l.pourquoi)));
+  /* Le choix du 22 août au soir : un dossier CLÔTURÉ n'est pas une exception.
+     Ashley Munao — « Clôturé ✓ », devis sans numéro, « Dr Anvar », medecin
+     vide depuis le 24 juillet : si son devis est rouvert et enregistré, le
+     refus est évalué et journalisé comme sur tout autre dossier. Un dossier
+     qu'on rouvre est un dossier qu'on modifie ; le refus explique un vide
+     qu'aucun journal n'expliquait. */
+  const clos = planifierRemontee(doc({ numero: '', chirurgien: 'Dr Anvar', dateIntervention: '' }), fiche({ stade: 'Clôturé ✓' }),
+    { engagement: 'engage', medecins: MEDECINS, aujourdhui: AUJOURDHUI });
+  v('dossier « Clôturé ✓ » (Munao) : le refus du chirurgien est évalué quand même', champs(clos.refus) === 'medecin' && clos.chirurgienInconnu === 'Dr Anvar');
+  v('… le stade, lui, ne recule pas : « Clôturé ✓ » reste, et c\'est dit', !('stade' in clos.aEcrire) && clos.laisses.some((l) => /Clôturé/.test(l.pourquoi)));
+  const journalClos = journaliserRefus('[]', clos.refus, { u: 'veys', date: '2026-08-23', heure: '10:00', motif: 'Remontée automatique du devis' });
+  v('… et le journal reçoit l\'entrée — aucune règle de stade dans journaliserRefus', journalClos.nouvelles.length === 1 && /Dr Anvar/.test(journalClos.nouvelles[0].motif));
 }
 
 console.log('\n=== 4. journaliserRefus — le journal dit aussi le refus, une fois ===');

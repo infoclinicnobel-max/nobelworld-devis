@@ -21,8 +21,8 @@ import {
   validiteDepassee,
 } from '@/lib/calc';
 import {
-  nettoyerActes, reajusterPrixSysteme, retenirForfaitSysteme, retenirOptionSysteme, tarifsPourMedecin,
-  traceMajoration,
+  mentionForfait, nettoyerActes, reajusterPrixSysteme, retenirForfaitSysteme, retenirOptionSysteme,
+  tarifsPourMedecin, traceMajoration,
 } from '@/lib/catalogue';
 import { choisirMedecin } from '@/lib/medecins';
 import type { DocRecord, Modele } from '@/lib/types';
@@ -543,6 +543,10 @@ export function DevisEditor({
      déjà en base garde ses montants quel que soit le chirurgien choisi
      ensuite : ici, son chirurgien vaut « aucun » pour la règle. */
   const idTarif = (s: DocRecord) => (isEdit ? '' : String(s.medecinId || ''));
+  /* Arbitrage ④ du 23 août : un chirurgien à taux choisi sur un forfait que le
+     système n'a pas posé se DIT sous le champ — un geste humain explicite
+     plutôt qu'une devinette (lib/catalogue.ts, mentionForfait). */
+  const noteForfait = mentionForfait(f, isEdit);
 
   const signaler = (m: Modele, description: string) => {
     const alertes: string[] = [];
@@ -893,6 +897,11 @@ export function DevisEditor({
                 value={f.forfait ?? 0}
                 onChange={(e) => canMoney && on.set('forfait', Number(e.target.value))}
               />
+              {!!noteForfait && (
+                <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 4 }}>
+                  ⚠ {noteForfait}
+                </div>
+              )}
             </Field>
             <Field label="Remise promotionnelle" hint={f.remiseType === 'pourcent' ? '%' : cur}>
               <div style={{ display: 'flex', gap: 8 }}>

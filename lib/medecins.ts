@@ -8,7 +8,13 @@
    que lit la règle tarifaire par chirurgien (lib/catalogue.ts).
 
    Le texte ne se déduit jamais de la référence à la lecture : il ne change
-   que par le geste de choisir, ici. */
+   que par le geste de choisir, ici.
+
+   ⚠ DETTE notée le 23 août (arbitrage ③), hors de ce lot : la saisie libre
+   ne subsiste que si la table est ILLISIBLE. Table lisible mais chirurgien
+   ABSENT — un praticien qui arrive (le Dr Uyanık, deux jours avant) est
+   innommable tant que `medecins` ne le porte pas, et l'application n'écrit
+   jamais cette table. À traiter à part, pas ici. */
 
 import type { DocRecord, Medecin } from './types';
 

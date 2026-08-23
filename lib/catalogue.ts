@@ -279,6 +279,32 @@ export function retenirOptionSysteme(d: DocRecord, optionId: string, m: Modele, 
   };
 }
 
+/** Le forfait courant a-t-il été posé par le système — et y est-il encore égal ? */
+export function forfaitPoseParLeSysteme(d: DocRecord): boolean {
+  const m = d._systeme?.forfait;
+  return !!m && Number(d.forfait) === m.prix;
+}
+
+/* ---- la mention du 23 août (arbitrage ④) ----
+
+   `_systeme` n'est jamais enregistré : un brouillon rouvert n'a pas de
+   mémoire, son forfait vaut « saisi à la main » pour la règle, et il ne
+   suivra jamais un changement de chirurgien — quel que soit le critère de
+   nouveauté (`!id` comme `!estFige`). D-2026-000043 : 12 200 € tapés
+   (aucune ligne du catalogue ne les vaut, majorée ou non), chirurgien vide.
+   Plutôt qu'une devinette, l'éditeur le DIT quand un chirurgien à taux est
+   choisi sur un document dont le forfait n'a pas été posé par le système ;
+   le geste reste humain : vider le forfait puis réappliquer l'acte (devis
+   neuf), ou saisir le montant (devis déjà en base — ses montants ne bougent
+   pas, par construction). Aucune mention sans taux, sans forfait, ou quand
+   le forfait est exactement ce que le système a posé. */
+export function mentionForfait(d: DocRecord, enBase: boolean): string {
+  if (!tauxDe(d.medecinId) || !(Number(d.forfait) > 0)) return '';
+  if (enBase) return 'forfait non majoré — devis déjà en base : ses montants ne bougent pas';
+  if (forfaitPoseParLeSysteme(d)) return '';
+  return "forfait saisi à la main — non majoré ; pour le tarif du chirurgien, videz-le puis réappliquez l'acte";
+}
+
 /* Au changement de chirurgien sur un devis NEUF. Sans mémoire (document
    dupliqué, converti, ou sans geste du système), rien ne bouge ; une ligne
    dont le modèle a quitté le catalogue garde son montant. */

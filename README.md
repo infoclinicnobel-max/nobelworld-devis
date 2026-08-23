@@ -115,7 +115,12 @@ Autres invariants :
   `sauvegarde_nw_devis_20260823` et `sauvegarde_nw_factures_20260823`. Dans l'éditeur, le
   champ devient une liste : ligne vide « À confirmer » en tête, puis Dr Ahmedov, puis
   l'ordre alphabétique, aucun pré-remplissage ; choisir est le SEUL geste qui change le
-  texte. Table illisible → liste vide, saisie libre conservée. `lib/medecins.ts` ;
+  texte. Table illisible → liste vide, saisie libre conservée. ⚠ **Dette notée** (③ du
+  23 août), hors de ce lot : table lisible mais chirurgien **absent** — un praticien qui
+  arrive est innommable tant que `medecins` ne le porte pas, et l'application n'écrit jamais
+  cette table (le Dr Uyanık est arrivé deux jours avant). La liste n'est **pas** filtrée par
+  spécialité (② : un devis capillaire nomme Elif Ozturk, un dentaire VSC Dental — filtrer
+  ramènerait la saisie libre par la porte de derrière). `lib/medecins.ts` ;
   `scripts/recette-chirurgien-reference.ts`.
 - **La majoration par chirurgien se calcule au geste, ne se stocke pas au catalogue, ne
   s'imprime pas** : règle du 23 août, les actes esthétiques du Dr Azar Zeynalov sont majorés
@@ -138,7 +143,14 @@ Autres invariants :
   `promoJours` — et le gel tient dans le mapper, même face à `undefined` ou à un `contenu`
   NULL. Le sélecteur et la Bibliothèque (liste « Tarifs affichés pour… ») montrent la paire
   majorée ; l'éditeur dit « imprimé : Dr Azar » quand le texte stocké diverge du libellé de
-  la liste. `catalogue_interventions` n'est jamais écrit. `lib/catalogue.ts` (`MAJORATIONS`,
+  la liste. **Arbitrage ④ du 23 août** : `_systeme` ne survit pas à une réouverture — un
+  brouillon rechargé (D-2026-000043 : 12 200 € tapés, aucune ligne du catalogue ne les vaut,
+  chirurgien vide) ne suivra jamais un changement de chirurgien, quel que soit le critère de
+  nouveauté ; `!id` est gardé, et l'éditeur **dit** sous le champ du forfait, quand un
+  chirurgien à taux est choisi sur un forfait que le système n'a pas posé : « forfait saisi à
+  la main — non majoré ; videz-le puis réappliquez l'acte » (devis neuf) ou « forfait non
+  majoré — devis déjà en base : ses montants ne bougent pas ». Geste humain explicite plutôt
+  que devinette (`mentionForfait`). `catalogue_interventions` n'est jamais écrit. `lib/catalogue.ts` (`MAJORATIONS`,
   `tarifsPourMedecin`, `retenir*Systeme`, `reajusterPrixSysteme`) ;
   `scripts/recette-majoration-chirurgien.ts`.
 - **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par

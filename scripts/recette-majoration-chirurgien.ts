@@ -30,8 +30,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  estMajorable, MAJORATIONS, reajusterPrixSysteme, retenirForfaitSysteme, retenirOptionSysteme,
-  tarifsPourMedecin, tauxMajoration, traceMajoration,
+  estMajorable, forfaitPoseParLeSysteme, MAJORATIONS, mentionForfait, reajusterPrixSysteme,
+  retenirForfaitSysteme, retenirOptionSysteme, tarifsPourMedecin, tauxMajoration, traceMajoration,
 } from '../lib/catalogue';
 import { devisToRow, rowToDevis, rowToModele } from '../lib/mappers';
 import type { DocRecord, Modele } from '../lib/types';
@@ -225,12 +225,53 @@ console.log('\n— 3. Le réajustement au changement de chirurgien — devis neu
   v('…et un document relu de la base n’en a pas', rowToDevis({ id: 'x', contenu: {} })._systeme === undefined);
 }
 
+console.log('\n— 3 bis. Arbitrage ④ du 23 août : un forfait que le système n’a pas posé le DIT —');
+{
+  /* D-2026-000043 tel que relevé en base le 23 août : brouillon, 12 200 € de
+     forfait, chirurgien VIDE, medecin_id NULL, cinq actes sous le modèle
+     sup-zone-liposuccion, aucune option. Aucune ligne du catalogue ne vaut
+     12 200 — ni 12 200 / 1,35 : le montant a été tapé. */
+  const d43 = rowToDevis({
+    id: 'dev_d43', numero: 'D-2026-000043', statut: 'brouillon', forfait: 12200, chirurgien: '', medecin_id: null,
+    contenu: {
+      modeleId: 'sup-zone-liposuccion',
+      actes: ['Lifting cervicofacial (Deep Plane)', 'Lifting temporal', 'Micro-lipofilling du visage', 'Lip lift', 'Liposuccion 1 zone']
+        .map((acte, i) => ({ id: 'a' + i, acte, inclus: '' })),
+    },
+  });
+  v('D-43 relu de la base : aucune mémoire — pour la règle, son forfait vaut « saisi à la main »',
+    d43._systeme === undefined && d43.forfait === 12200 && !forfaitPoseParLeSysteme(d43));
+  v('choisir Zeynalov sur D-43 ne bouge pas 12 200 : sans mémoire, rien ne suit — avec !id comme avec tout autre critère de nouveauté',
+    reajusterPrixSysteme({ ...d43, medecinId: ZEY }, ZEY, MODELES).forfait === 12200);
+  v('12 200 n’est le prix d’aucune ligne du banc, majorée ou non',
+    !MODELES.some((m) => [m.prixBase, m.prixStandard, tarifsPourMedecin(m, ZEY).promo, tarifsPourMedecin(m, ZEY).standard].includes(12200)));
+  const surD43 = mentionForfait({ ...d43, medecinId: ZEY }, true);
+  v('mention sur D-43 (en base), Zeynalov choisi : « non majoré — devis déjà en base »',
+    /non majoré/.test(surD43) && /déjà en base/.test(surD43), surD43);
+
+  const tape = { forfait: 12200, medecinId: ZEY, actes: [] } as DocRecord;
+  const mTape = mentionForfait(tape, false);
+  v('devis neuf, 12 200 tapés, Zeynalov : « forfait saisi à la main — non majoré »', mTape.startsWith('forfait saisi à la main — non majoré'), mTape);
+  v('…et la mention dit le geste : vider, puis réappliquer l’acte', /videz/.test(mTape) && /réappliquez/.test(mTape));
+  const pose = retenirForfaitSysteme({ forfait: 4455, medecinId: ZEY, actes: [] } as DocRecord, VASER, 4455);
+  v('forfait posé par le système et encore égal : aucune mention', forfaitPoseParLeSysteme(pose) && mentionForfait(pose, false) === '');
+  v('forfait posé puis retouché (4 455 → 4 500) : mention — il n’est plus ce que le système a posé',
+    /saisi à la main/.test(mentionForfait({ ...pose, forfait: 4500 }, false)));
+  v('Ahmedov (sans taux), 12 200 tapés : aucune mention — rien à majorer', mentionForfait({ ...tape, medecinId: AHM }, false) === '');
+  v('forfait vide, Zeynalov : aucune mention — le prochain modèle posera le tarif majoré',
+    mentionForfait({ forfait: 0, medecinId: ZEY } as DocRecord, false) === '');
+  v('sans chirurgien : aucune mention', mentionForfait({ ...tape, medecinId: '' }, false) === '');
+  v('une clé du prototype comme chirurgien : aucune mention', mentionForfait({ ...tape, medecinId: 'constructor' }, false) === '');
+}
+
 console.log('\n— 4. Gardes de source : rien sur le document, rien dans le calcul, la règle aux trois écrans —');
 {
   const racine = fileURLToPath(new URL('..', import.meta.url));
   const src = (f: string) => readFileSync(racine + f, 'utf8');
-  v('components/DevisDoc.tsx ne connaît ni la majoration ni la règle (aucune ligne sur le PDF)',
-    !/majoration|tarifsPourMedecin|MAJORATIONS/.test(src('components/DevisDoc.tsx')));
+  v('components/DevisDoc.tsx ne connaît ni la majoration ni la règle, ni la mention (aucune ligne sur le PDF)',
+    !/majoration|tarifsPourMedecin|MAJORATIONS|mentionForfait/.test(src('components/DevisDoc.tsx')));
+  v('l’éditeur de devis pose la mention du ④ sous le champ du forfait (mentionForfait)',
+    src('components/Devis.tsx').includes('mentionForfait(f, isEdit)'));
   /* Le mot « catalogue » figure dans la doctrine en tête de calc.ts (« rien
      ici ne relit le catalogue ») : la garde vise le code, pas la prose. */
   v('lib/calc.ts ne relit rien de la règle (un devis envoyé reste figé)',

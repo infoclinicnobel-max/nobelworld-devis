@@ -106,6 +106,17 @@ Autres invariants :
   Diallo et El Acmaoui les 17-18 août, premières écritures définitives réparées à la main.
   Pas de filtre sur `medecins.actif` (convention texte posée « au jugé », v1.84).
   Recette section 18.
+- **Le chirurgien est référencé, le texte reste** : depuis le 23 août, `nw_devis` et
+  `nw_factures` portent `medecin_id` (référence vers `medecins.id`) À CÔTÉ du texte
+  `chirurgien`, qui s'imprime et n'est jamais déduit de la référence — ni l'inverse. Les 25
+  devis et 15 factures d'avant ont reçu la référence par correspondance normalisée du texte
+  (18 Ahmedov · 5 Zeynalov · 1 Uyanik ; la ligne vide, F-16 et F-28 « AANVAR AHMEDOV »
+  restent NULL) sans qu'une autre colonne bouge — diff mesuré colonne par colonne contre
+  `sauvegarde_nw_devis_20260823` et `sauvegarde_nw_factures_20260823`. Dans l'éditeur, le
+  champ devient une liste : ligne vide « À confirmer » en tête, puis Dr Ahmedov, puis
+  l'ordre alphabétique, aucun pré-remplissage ; choisir est le SEUL geste qui change le
+  texte. Table illisible → liste vide, saisie libre conservée. `lib/medecins.ts` ;
+  `scripts/recette-chirurgien-reference.ts`.
 - **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
   colonne dans `patients.historique` — le journal de fiche du CRM, format
   `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —
@@ -295,6 +306,7 @@ npx tsx scripts/totaux-devis.ts devis.json ref.json   # montants inchangés, dev
 npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les règles de la remontée
 npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
+npx tsx scripts/recette-chirurgien-reference.ts       # 22 contrôles : référence à côté du texte, liste, geste
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

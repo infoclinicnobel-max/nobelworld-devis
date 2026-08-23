@@ -21,6 +21,7 @@ import {
   validiteDepassee,
 } from '@/lib/calc';
 import { nettoyerActes } from '@/lib/catalogue';
+import { choisirMedecin } from '@/lib/medecins';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -584,6 +585,8 @@ export function DevisEditor({
     editable: true,
     patients: data.patients,
     paiements: data.paiements,
+    medecins: data.medecins,
+    setMedecin: (id) => setF((s) => choisirMedecin(s, id, data.medecins)),
     set: (k, v) => setF((s) => ({ ...s, [k]: v })),
     addActe: () => setF((s) => ({ ...s, actes: [...(s.actes || []), { id: uid('a'), acte: '', inclus: '' }] })),
     setActe: (id, k, v) =>

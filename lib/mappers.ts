@@ -5,7 +5,7 @@
 import { curSymbol, normalizeDate } from './format';
 import { DEFAULT_SETTINGS, type Settings } from './defaults';
 import { mapRole, parseProfilePerms, type AppUser } from './perms';
-import type { DocRecord, HistoEntry, Modele, OptionCat, Paiement, Patient } from './types';
+import type { DocRecord, HistoEntry, Medecin, Modele, OptionCat, Paiement, Patient } from './types';
 
 type Row = Record<string, any>;
 
@@ -76,6 +76,7 @@ function baseRowToDoc(r: Row): DocRecord {
     validite: normalizeDate(r.validite),
     dateIntervention: normalizeDate(r.date_intervention),
     chirurgien: str(r.chirurgien),
+    medecinId: r.medecin_id ? str(r.medecin_id) : '',
     hopital: str(r.hopital),
     statut: str(r.statut) || 'brouillon',
     devise: curSymbol(r.devise) || '€',
@@ -213,6 +214,7 @@ export function devisToRow(d: DocRecord, auteur: string): Row {
     validite: dateCol(d.validite),
     date_intervention: dateCol(d.dateIntervention),
     chirurgien: str(d.chirurgien),
+    medecin_id: d.medecinId ? str(d.medecinId) : null,
     hopital: str(d.hopital),
     statut: str(d.statut) || 'brouillon',
     devise: conserver(d, 'devise', deviseCol(d.devise), (v) => curSymbol(v) === curSymbol(d.devise)),
@@ -341,6 +343,16 @@ export function rowToModele(r: Row): Modele {
     actif: r.actif !== false,
     ordre: r.ordre == null ? null : Number(r.ordre),
   };
+}
+
+/* ---------------------------------------------- médecins (lecture seule) */
+
+/* Deux colonnes seulement : l'identifiant que référence `medecin_id` et le
+   libellé canonique qui s'imprime. Pas de filtre sur `actif` — colonne texte
+   à la convention posée « au jugé » le 19 août (v1.84), même doctrine que la
+   remontée vers la fiche. */
+export function rowToMedecin(r: Row): Medecin {
+  return { id: str(r.id), nomAffiche: str(r.nomAffiche).trim() };
 }
 
 /* ------------------------------------------------- profils (lecture seule) */

@@ -17,6 +17,7 @@ import {
   totalAvantRemise, totalOf,
 } from '@/lib/calc';
 import { differencesFacture, messageModificationFacture } from '@/lib/trace';
+import { choisirMedecin } from '@/lib/medecins';
 import type { DocRecord, Paiement } from '@/lib/types';
 
 /* =========================================================================
@@ -628,6 +629,8 @@ export function FactureEditor({ facture, onClose }: { facture: DocRecord; onClos
     editable: true,
     patients: data.patients,
     paiements: data.paiements,
+    medecins: data.medecins,
+    setMedecin: (id) => marque((s) => choisirMedecin(s, id, data.medecins)),
     set: (k, v) => marque((s) => ({ ...s, [k]: v })),
     addActe: () => marque((s) => ({ ...s, actes: [...(s.actes || []), { id: uid('a'), acte: '', inclus: '' }] })),
     setActe: (id, k, v) =>

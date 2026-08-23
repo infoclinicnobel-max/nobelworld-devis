@@ -55,6 +55,12 @@ export interface DocRecord {
   validite?: string;
   dateIntervention?: string;
   chirurgien?: string;
+  /* Référence vers `medecins.id`, posée à côté du texte le 23/08/2026 — le
+     texte `chirurgien` reste ce qui s'imprime, et il n'est jamais déduit de
+     la référence à la lecture : il ne change que par un geste dans l'éditeur
+     (lib/medecins.ts). Vide sur les documents d'avant ce lot dont le texte
+     n'a pas pu être rattaché. */
+  medecinId?: string;
   hopital?: string;
   statut?: string;
   devise?: string;
@@ -142,6 +148,12 @@ export interface OptionCat {
   actif: boolean;
 }
 
+/** Chirurgien du CRM = ligne de la table `medecins` (lecture seule). */
+export interface Medecin {
+  id: string;
+  nomAffiche: string;
+}
+
 export interface HistoEntry {
   id: string;
   date: string;
@@ -161,6 +173,8 @@ export interface AppData {
   utilisateurs: AppUser[];
   /** Correspondances anciens libellés ↔ catalogue (lecture seule, sert aux alertes). */
   correspondances: { libelle: string; catalogueId: string | null; statut: string }[];
+  /** Chirurgiens du CRM (lecture seule) : la liste proposée par l'éditeur. Vide si la table est illisible — la saisie libre reprend alors. */
+  medecins: Medecin[];
 }
 
 export type Collection = 'patients' | 'devis' | 'factures' | 'paiements' | 'options' | 'historique';

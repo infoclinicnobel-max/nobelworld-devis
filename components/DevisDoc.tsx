@@ -15,7 +15,8 @@ import {
   devisTotal, estRetenue, factPayments, optionsADecider, optsSum, patientName, remiseMontant,
   totalOf, totalSiToutesOptions,
 } from '@/lib/calc';
-import type { Acte, DocRecord, Modele, Paiement, Patient } from '@/lib/types';
+import { ordonnerMedecins } from '@/lib/medecins';
+import type { Acte, DocRecord, Medecin, Modele, Paiement, Patient } from '@/lib/types';
 
 /* =========================================================================
    DOCUMENT PREMIUM (devis & facture) + impression PDF
@@ -28,6 +29,11 @@ export interface DocHandlers {
   editable?: boolean;
   patients?: Patient[];
   paiements?: Paiement[];
+  /* Chirurgiens du CRM et le geste qui en rattache un au document (texte
+     imprimé + référence, lib/medecins.ts). Sans liste — table illisible —
+     le champ reste une saisie libre. */
+  medecins?: Medecin[];
+  setMedecin?: (id: string) => void;
   set: (k: string, v: unknown) => void;
   addActe: () => void;
   setActe: (id: string, k: string, v: string) => void;
@@ -675,7 +681,23 @@ export function DevisDoc({
               <div className="c">
                 <div className="k">Chirurgien</div>
                 <div className="val">
-                  {E ? (
+                  {E && on!.medecins?.length && on!.setMedecin ? (
+                    <select
+                      className="ed"
+                      value={record.medecinId || ''}
+                      onChange={(e) => on!.setMedecin!(e.target.value)}
+                    >
+                      {/* Ligne vide en tête, jamais pré-remplie. Un document
+                          d'avant le 23/08 dont le texte n'a pas de référence
+                          montre ici ce texte — celui qui s'imprime. */}
+                      <option value="">
+                        {!record.medecinId && record.chirurgien ? record.chirurgien : 'À confirmer'}
+                      </option>
+                      {ordonnerMedecins(on!.medecins).map((m) => (
+                        <option key={m.id} value={m.id}>{m.nomAffiche}</option>
+                      ))}
+                    </select>
+                  ) : E ? (
                     <EditableText value={record.chirurgien} placeholder="Dr …" onChange={(v) => set('chirurgien', v)} />
                   ) : (
                     record.chirurgien || 'À confirmer'

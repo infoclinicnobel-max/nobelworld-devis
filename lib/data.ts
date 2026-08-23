@@ -11,7 +11,7 @@
 import { supabase } from './supabase/client';
 import {
   devisToRow, factureToRow, histoToRow, optionToRow, paiementToRow, patientToRow,
-  rowToDevis, rowToFacture, rowToHisto, rowToModele, rowToOption, rowToPaiement,
+  rowToDevis, rowToFacture, rowToHisto, rowToMedecin, rowToModele, rowToOption, rowToPaiement,
   rowToPatient, rowToUser, settingsToValeur, valeurToSettings,
 } from './mappers';
 import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } from './types';
@@ -75,7 +75,7 @@ export async function chargerTout(): Promise<AppData> {
   const sb = supabase();
   const [
     param, patients, devis, factures, paiements, options, historique, profiles, catalogue, corresp,
-    descriptions,
+    descriptions, medecinsR,
   ] = await Promise.all([
     sb.from('nw_parametres').select('cle,valeur'),
     sb.from('patients').select('*').order('nom', { ascending: true }),
@@ -88,6 +88,10 @@ export async function chargerTout(): Promise<AppData> {
     sb.from('catalogue_interventions').select('*').order('ordre', { ascending: true, nullsFirst: false }),
     sb.from('catalogue_correspondances').select('libelle_libre,catalogue_id,statut'),
     sb.from('nw_catalogue_descriptions').select('catalogue_id,description'),
+    /* Chirurgiens proposés par l'éditeur — lecture seule, RLS `medecins_read`.
+       Tolérant : table illisible → liste vide, et le champ du document
+       redevient une saisie libre au lieu de bloquer l'application. */
+    sb.from('medecins').select('id,nomAffiche').order('nomAffiche', { ascending: true }),
   ]);
 
   const premiereErreur = [param, patients, devis, factures, paiements, options, historique, profiles,
@@ -109,6 +113,10 @@ export async function chargerTout(): Promise<AppData> {
 
   const societe = (param.data || []).find((r: any) => r.cle === 'societe');
 
+  if (medecinsR.error) {
+    console.warn('[CN][medecins] table illisible — le chirurgien reste en saisie libre :', medecinsR.error.message);
+  }
+
   return {
     parametres: valeurToSettings(societe?.valeur),
     patients: (patients.data || []).map(rowToPatient),
@@ -127,6 +135,9 @@ export async function chargerTout(): Promise<AppData> {
       catalogueId: c.catalogue_id ? String(c.catalogue_id) : null,
       statut: String(c.statut || ''),
     })),
+    medecins: medecinsR.error
+      ? []
+      : (medecinsR.data || []).map(rowToMedecin).filter((m) => m.id && m.nomAffiche),
   };
 }
 

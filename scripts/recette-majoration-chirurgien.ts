@@ -11,10 +11,15 @@
 
    Quatre gardes, toutes ici :
    · devis NEUF seulement — un devis déjà en base garde ses montants ;
-   · un montant saisi à la main n'est jamais écrasé — le réajustement au
-     changement de chirurgien ne touche qu'un montant encore au prix système ;
+   · un montant saisi à la main n'est jamais écrasé — au changement de
+     chirurgien, seul un montant encore égal à ce que le SYSTÈME a posé (la
+     mémoire `_systeme` de l'éditeur, jamais enregistrée) suit le nouveau
+     chirurgien ; reconnaître un prix système par égalité avec un tarif du
+     catalogue se trompait dans les deux sens (vérification adverse du 23/08,
+     1 155 € d'écart : 4 455 saisi à la main, ou 3 300 d'un premier modèle
+     gardé sous le modeleId d'un second) ;
    · duplication et conversion en facture reprennent les montants tels quels
-     (elles ne passent par aucun geste tarifaire) ;
+     (elles ne passent par aucun geste tarifaire, et n'ont pas de mémoire) ;
    · `contenu.majoration` est gelé à l'enregistrement et jamais rendu.
 
    Les lignes du catalogue sont les lignes RÉELLES relevées le 23 août. Un
@@ -25,7 +30,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  estMajorable, MAJORATIONS, reajusterPrixSysteme, tarifsPourMedecin, traceMajoration,
+  estMajorable, MAJORATIONS, reajusterPrixSysteme, retenirForfaitSysteme, retenirOptionSysteme,
+  tarifsPourMedecin, tauxMajoration, traceMajoration,
 } from '../lib/catalogue';
 import { devisToRow, rowToDevis, rowToModele } from '../lib/mappers';
 import type { DocRecord, Modele } from '../lib/types';
@@ -84,6 +90,11 @@ console.log('\n— 1. La règle : la paire du catalogue, majorée pour Zeynalov 
   v('périmètre : esthétique + la zone de liposuccion, rien d’autre',
     estMajorable(VASER) && estMajorable(COMBO59) && estMajorable(ZONE)
       && !estMajorable(SLEEVE) && !estMajorable(DHI) && !estMajorable(ALLON4));
+  /* Vérification adverse du 23/08 : MAJORATIONS[id] || 0 sur une clé du
+     prototype rendait une fonction, « truthy », et un tarif NaN. */
+  v('une clé du prototype (« constructor », « __proto__ ») ne déclenche rien',
+    tauxMajoration(VASER, 'constructor') === 0 && tauxMajoration(VASER, '__proto__') === 0
+      && tarifsPourMedecin(VASER, 'constructor').promo === 3300 && traceMajoration('constructor') === undefined);
 }
 
 console.log('\n— 2. Le document garde la trace de la règle, gelée, jamais rendue —');
@@ -115,47 +126,103 @@ console.log('\n— 2. Le document garde la trace de la règle, gelée, jamais re
   const wt = devisToRow({ ...rowToDevis(rowTrace), majoration: { medecinId: AHM, taux: 0.5 } }, AUTEUR) as { contenu: Record<string, unknown> };
   v('devis existant : une trace stockée n’est pas modifiée par le formulaire',
     JSON.stringify(wt.contenu.majoration) === JSON.stringify({ medecinId: ZEY, taux: 0.35 }));
+  /* Trou mesuré par la vérification adverse du 23/08 : le gel venait APRÈS le
+     saut des valeurs absentes — un formulaire portant la clé à `undefined`
+     effaçait la trace stockée. Le gel doit tenir dans le mapper, pas
+     seulement par les gardes de l'éditeur. */
+  const wu = devisToRow({ ...rowToDevis(rowTrace), majoration: undefined }, AUTEUR) as { contenu: Record<string, unknown> };
+  v('devis existant : un formulaire SANS la clé (undefined) n’efface pas la trace stockée',
+    JSON.stringify(wu.contenu.majoration) === JSON.stringify({ medecinId: ZEY, taux: 0.35 }));
+  const wr = devisToRow(reajusterPrixSysteme(rowToDevis(rowTrace), AHM, MODELES), AUTEUR) as { contenu: Record<string, unknown>; forfait: number };
+  v('…même après un reajusterPrixSysteme appelé par erreur sur un existant : trace et forfait stockés conservés',
+    JSON.stringify(wr.contenu.majoration) === JSON.stringify({ medecinId: ZEY, taux: 0.35 }) && wr.forfait === 4000);
+  const wp = devisToRow({ ...rowToDevis(rowTrace), promoJours: undefined }, AUTEUR) as { contenu: Record<string, unknown> };
+  v('promoJours, gelé de la même façon, survit aussi à undefined', wp.contenu.promoJours === 15);
+  const wn2 = devisToRow({ forfait: 3300, actes: [], promoJours: undefined, majoration: undefined } as DocRecord, AUTEUR) as { contenu: Record<string, unknown> };
+  v('devis NEUF : les clés gelées absentes restent absentes (aucun gel sans ligne stockée)',
+    !('majoration' in wn2.contenu) && !('promoJours' in wn2.contenu));
+  /* Second trou nommé par la vérification adverse : `contenu` NULL en base
+     faisait passer un document existant pour neuf. Aucune des 40 lignes
+     réelles n'est dans ce cas (mesuré le 23/08) ; le mécanisme tient quand même. */
+  const wNull = devisToRow({ ...rowToDevis({ ...rowAncien, contenu: null }), majoration: traceMajoration(ZEY), bqIban: 'FR76' }, AUTEUR) as { contenu: Record<string, unknown> };
+  v('devis existant à contenu NULL : toujours existant — ni trace créée, ni IBAN créé',
+    !('majoration' in wNull.contenu) && !('bqIban' in wNull.contenu));
 }
 
-console.log('\n— 3. Le réajustement au changement de chirurgien — devis neuf, prix système seulement —');
+console.log('\n— 3. Le réajustement au changement de chirurgien — devis neuf, montants posés par le système seulement —');
 {
-  const neuf: DocRecord = {
-    modeleId: VASER.id, forfait: 3300, medecinId: '', chirurgien: '', actes: [],
+  /* Le parcours de l'éditeur sur un devis neuf, tel que components/Devis.tsx
+     l'enchaîne : modèle appliqué sur un forfait vide (posé et retenu), option
+     du catalogue sur une ligne vide (posée et retenue), puis des saisies. */
+  let neuf: DocRecord = { modeleId: VASER.id, forfait: 3300, medecinId: '', chirurgien: '', actes: [], options: [] };
+  neuf = retenirForfaitSysteme(neuf, VASER, 3300);
+  neuf = {
+    ...neuf,
     options: [
-      { id: 'o1', nom: 'Zone de liposuccion supplémentaire', prix: 500, qty: 1, retenue: false },
-      { id: 'o2', nom: 'Nuit supplémentaire', prix: 150, qty: 1, retenue: false },
-      { id: 'o3', nom: 'zone de liposuccion supplémentaire', prix: 450, qty: 1, retenue: true },
+      { id: 'o1', nom: ZONE.nom, prix: 500, qty: 1, retenue: false },          // posée par le système
+      { id: 'o2', nom: 'Nuit supplémentaire', prix: 150, qty: 1, retenue: false }, // hors catalogue, saisie
+      { id: 'o3', nom: ZONE.nom, prix: 450, qty: 1, retenue: true },            // même libellé, prix saisi
+      { id: 'o4', nom: ZONE.nom, prix: 500, qty: 1, retenue: false },           // même prix, mais SAISI (non retenu)
     ],
   };
-  const z = reajusterPrixSysteme(neuf, '', ZEY, MODELES);
-  v('forfait au prix système 3 300 → 4 455 en passant à Zeynalov', z.forfait === 4455, String(z.forfait));
-  v('option zone au prix système 500 → 675', z.options![0].prix === 675);
+  neuf = retenirOptionSysteme(neuf, 'o1', ZONE, 500);
+
+  const z = reajusterPrixSysteme(neuf, ZEY, MODELES);
+  v('forfait posé par le système 3 300 → 4 455 en passant à Zeynalov', z.forfait === 4455, String(z.forfait));
+  v('option zone posée par le système 500 → 675', z.options![0].prix === 675);
   v('option hors catalogue (nuit) : intacte', z.options![1].prix === 150);
-  v('option zone saisie à la main (450, casse différente) : JAMAIS écrasée', z.options![2].prix === 450);
+  v('option zone saisie à la main (450) : JAMAIS écrasée', z.options![2].prix === 450);
+  v('option zone saisie à la main au MÊME prix que le catalogue (500) : intacte — un montant ne dit pas d’où il vient, la mémoire le dit',
+    z.options![3].prix === 500);
   v('les autres attributs des options ne bougent pas', z.options![0].retenue === false && z.options![2].retenue === true && z.options![0].id === 'o1');
   v('la trace suit le chirurgien', JSON.stringify(z.majoration) === JSON.stringify({ medecinId: ZEY, taux: 0.35 }));
-  v('le document de départ n’est pas muté', neuf.forfait === 3300 && neuf.options![0].prix === 500 && neuf.majoration === undefined);
+  v('la mémoire suit les montants posés', z._systeme!.forfait!.prix === 4455 && z._systeme!.options!.o1.prix === 675);
+  v('le document de départ n’est pas muté', neuf.forfait === 3300 && neuf.options![0].prix === 500 && neuf.majoration === undefined && neuf._systeme!.forfait!.prix === 3300);
 
-  const retour = reajusterPrixSysteme(z, ZEY, '', MODELES);
+  const retour = reajusterPrixSysteme(z, '', MODELES);
   v('retour à « À confirmer » : 4 455 → 3 300, 675 → 500', retour.forfait === 3300 && retour.options![0].prix === 500);
-  v('…la main (450) et le hors catalogue (150) toujours intacts', retour.options![2].prix === 450 && retour.options![1].prix === 150);
+  v('…la main (450, 500) et le hors catalogue (150) toujours intacts',
+    retour.options![2].prix === 450 && retour.options![3].prix === 500 && retour.options![1].prix === 150);
   v('…et la trace disparaît', retour.majoration === undefined);
+  v('Zeynalov → Ahmedov : le montant posé majoré redevient le prix catalogue',
+    reajusterPrixSysteme(z, AHM, MODELES).forfait === 3300 && reajusterPrixSysteme(z, AHM, MODELES).options![0].prix === 500);
 
-  const versAhmedov = reajusterPrixSysteme(z, ZEY, AHM, MODELES);
-  v('Zeynalov → Ahmedov : le prix système majoré redevient le prix catalogue', versAhmedov.forfait === 3300 && versAhmedov.options![0].prix === 500);
+  /* Vérification adverse du 23/08, cas 1 : 4 455 TAPÉ À LA MAIN (chirurgien
+     vide, modèle Vaser) était reconnu comme « prix système Zeynalov » et
+     ramené à 3 300 au passage Zeynalov → Ahmedov. */
+  const main4455 = reajusterPrixSysteme({ ...neuf, forfait: 4455 }, ZEY, MODELES);
+  v('4 455 saisi à la main (≠ posé 3 300) : intact en passant à Zeynalov', main4455.forfait === 4455);
+  v('…et intact en passant ensuite à Ahmedov — plus de coïncidence possible', reajusterPrixSysteme(main4455, AHM, MODELES).forfait === 4455);
+  /* Cas 2 : deux modèles appliqués de suite — le forfait du premier (3 300,
+     Vaser) reste sous le modeleId du second (combo-59). Reconnu par le
+     modeleId, il ne bougeait pas (3 300 pour Zeynalov : 1 155 € de moins) ;
+     retenu comme « posé pour Vaser », il suit. */
+  const deuxModeles = { ...neuf, modeleId: COMBO59.id };
+  v('forfait du premier modèle gardé sous le modeleId du second : suit le PREMIER modèle (3 300 → 4 455)',
+    reajusterPrixSysteme(deuxModeles, ZEY, MODELES).forfait === 4455);
+  /* …et dans l'autre sens : posé 4 455 pour Zeynalov, combo appliqué ensuite, puis Ahmedov. */
+  const poseZey = retenirForfaitSysteme({ ...neuf, forfait: 4455, medecinId: ZEY, modeleId: COMBO59.id }, VASER, 4455);
+  v('posé 4 455 pour Zeynalov puis combo appliqué par-dessus : Ahmedov ramène bien à 3 300', reajusterPrixSysteme(poseZey, AHM, MODELES).forfait === 3300);
 
-  const main = reajusterPrixSysteme({ ...neuf, forfait: 3500 }, '', ZEY, MODELES);
-  v('forfait saisi à la main (3 500 ≠ prix système) : JAMAIS écrasé', main.forfait === 3500);
-  const zero = reajusterPrixSysteme({ ...neuf, forfait: 0 }, '', ZEY, MODELES);
-  v('forfait à 0 (aucun modèle appliqué) : reste 0', zero.forfait === 0);
-  const inconnu = reajusterPrixSysteme({ ...neuf, modeleId: 'modele-retire' }, '', ZEY, MODELES);
-  v('modèle introuvable (ligne retirée du catalogue) : le forfait ne bouge pas', inconnu.forfait === 3300);
-  const sansModele = reajusterPrixSysteme({ ...neuf, modeleId: '' }, '', ZEY, MODELES);
-  v('sans modèle : le forfait ne bouge pas, les options catalogue si', sansModele.forfait === 3300 && sansModele.options![0].prix === 675);
-  const ahmVersUya = reajusterPrixSysteme({ ...neuf, medecinId: AHM }, AHM, UYA, MODELES);
+  const main = reajusterPrixSysteme({ ...neuf, forfait: 3500 }, ZEY, MODELES);
+  v('forfait saisi à la main (3 500 ≠ posé) : JAMAIS écrasé', main.forfait === 3500);
+  const zero = reajusterPrixSysteme({ ...neuf, forfait: 0 }, ZEY, MODELES);
+  v('forfait effacé (0) : reste 0', zero.forfait === 0);
+  const inconnu = reajusterPrixSysteme({ ...neuf, _systeme: { forfait: { modeleId: 'modele-retire', prix: 3300 } } }, ZEY, MODELES);
+  v('modèle posé retiré du catalogue : le forfait ne bouge pas', inconnu.forfait === 3300);
+  const sansMemoire = reajusterPrixSysteme({ ...neuf, _systeme: undefined }, ZEY, MODELES);
+  v('sans mémoire (document dupliqué, converti, ou sans geste du système) : rien ne bouge',
+    sansMemoire.forfait === 3300 && sansMemoire.options![0].prix === 500);
+  const ahmVersUya = reajusterPrixSysteme({ ...neuf, medecinId: AHM }, UYA, MODELES);
   v('Ahmedov → Uyanik (tous deux hors règle) : rien ne change', ahmVersUya.forfait === 3300 && ahmVersUya.options![0].prix === 500 && ahmVersUya.majoration === undefined);
-  const sansOptions = reajusterPrixSysteme({ modeleId: VASER.id, forfait: 3300 }, '', ZEY, MODELES);
+  const sansOptions = reajusterPrixSysteme(retenirForfaitSysteme({ modeleId: VASER.id, forfait: 3300 }, VASER, 3300), ZEY, MODELES);
   v('sans tableau d’options : pas d’erreur, pas d’options inventées', sansOptions.forfait === 4455 && sansOptions.options === undefined);
+
+  /* La mémoire ne part JAMAIS en base. */
+  const w = devisToRow(z, AUTEUR) as Record<string, unknown>;
+  v('_systeme n’est ni une colonne ni une clé de contenu',
+    !('_systeme' in w) && !('_systeme' in (w.contenu as Record<string, unknown>)) && !('_row' in w));
+  v('…et un document relu de la base n’en a pas', rowToDevis({ id: 'x', contenu: {} })._systeme === undefined);
 }
 
 console.log('\n— 4. Gardes de source : rien sur le document, rien dans le calcul, la règle aux trois écrans —');
@@ -168,13 +235,17 @@ console.log('\n— 4. Gardes de source : rien sur le document, rien dans le calc
      ici ne relit le catalogue ») : la garde vise le code, pas la prose. */
   v('lib/calc.ts ne relit rien de la règle (un devis envoyé reste figé)',
     !/majoration|tarifsPourMedecin|MAJORATIONS|from '\.\/catalogue'/.test(src('lib/calc.ts')));
+  v('lib/mappers.ts ne connaît pas la mémoire _systeme (elle ne part jamais en base)',
+    !src('lib/mappers.ts').includes('_systeme'));
   v('le sélecteur, la Bibliothèque et l’éditeur de devis passent par tarifsPourMedecin',
     ['components/SelecteurModele.tsx', 'components/Bibliotheque.tsx', 'components/Devis.tsx']
       .every((f) => src(f).includes('tarifsPourMedecin(')));
   v('l’éditeur de devis réserve la règle au devis neuf (isEdit)', /isEdit \? '' :/.test(src('components/Devis.tsx')));
+  v('l’éditeur de devis retient ce que le système pose (forfait et option)',
+    src('components/Devis.tsx').includes('retenirForfaitSysteme(') && src('components/Devis.tsx').includes('retenirOptionSysteme('));
   v('la duplication et la conversion en facture ne passent par aucun geste tarifaire',
-    !/reajusterPrixSysteme|tarifsPourMedecin/.test(src('components/Devis.tsx').split('const duplicate')[1].split('export function')[0]));
-  v('l’éditeur de facture ne réajuste jamais', !/reajusterPrixSysteme|tarifsPourMedecin/.test(src('components/Factures.tsx')));
+    !/reajusterPrixSysteme|tarifsPourMedecin|retenir\w+Systeme/.test(src('components/Devis.tsx').split('const duplicate')[1].split('export function')[0]));
+  v('l’éditeur de facture ne réajuste jamais', !/reajusterPrixSysteme|tarifsPourMedecin|retenir\w+Systeme/.test(src('components/Factures.tsx')));
 }
 
 /* ---- bilan ---- */

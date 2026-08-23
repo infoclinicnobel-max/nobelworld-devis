@@ -124,15 +124,23 @@ Autres invariants :
   est majorée (promo ET standard quand il existe ; les dix lignes esthétiques sans standard
   gardent un standard absent), arrondie à l'euro ; le devis prend le promo majoré (lipo Vaser
   360 : 3 300 → 4 455 €), les options aussi (zone : 500 → 675 €). Lue sur `medecinId`, jamais
-  sur le texte. **Devis neuf seulement** : un devis déjà en base garde ses montants quel que
-  soit le chirurgien choisi ensuite ; un montant saisi à la main n'est jamais écrasé — au
-  changement de chirurgien, seul un montant encore au prix système passe au prix système du
-  nouveau ; duplication et conversion en facture reprennent les montants tels quels. La
-  patiente voit 4 455 €, pas 3 300 € + 35 % : aucune ligne sur le document, `lib/calc.ts`
-  ignore tout de la règle ; `contenu.majoration` garde la trace, gelée comme `promoJours`.
-  Le sélecteur et la Bibliothèque (liste « Tarifs affichés pour… ») montrent la paire majorée.
-  `catalogue_interventions` n'est jamais écrit. `lib/catalogue.ts` (`MAJORATIONS`,
-  `tarifsPourMedecin`, `reajusterPrixSysteme`) ; `scripts/recette-majoration-chirurgien.ts`.
+  sur le texte. **Devis neuf seulement** (`!id`, frontière voulue : un devis déjà en base —
+  même brouillon — garde ses montants quel que soit le chirurgien choisi ensuite). **Un
+  montant saisi à la main n'est jamais écrasé** : un montant ne dit pas d'où il vient (4 455
+  tapé ≈ prix système Zeynalov ; 3 300 d'un premier modèle gardé sous le `modeleId` d'un
+  second — 1 155 € d'écart mesurés par la vérification adverse du 23 août), l'éditeur retient
+  donc ce que le système a posé et pour quel modèle (`_systeme`, mémoire de la saisie, jamais
+  enregistrée) et, au changement de chirurgien, seul un montant encore égal à ce qui a été
+  posé suit le nouveau chirurgien. Duplication et conversion en facture reprennent les
+  montants tels quels (aucun geste, aucune mémoire). La patiente voit 4 455 €, pas
+  3 300 € + 35 % : aucune ligne sur le document, `lib/calc.ts` ignore tout de la règle ;
+  `contenu.majoration` garde la trace (« règle en vigueur au dernier geste »), gelée comme
+  `promoJours` — et le gel tient dans le mapper, même face à `undefined` ou à un `contenu`
+  NULL. Le sélecteur et la Bibliothèque (liste « Tarifs affichés pour… ») montrent la paire
+  majorée ; l'éditeur dit « imprimé : Dr Azar » quand le texte stocké diverge du libellé de
+  la liste. `catalogue_interventions` n'est jamais écrit. `lib/catalogue.ts` (`MAJORATIONS`,
+  `tarifsPourMedecin`, `retenir*Systeme`, `reajusterPrixSysteme`) ;
+  `scripts/recette-majoration-chirurgien.ts`.
 - **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
   colonne dans `patients.historique` — le journal de fiche du CRM, format
   `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —
@@ -323,7 +331,7 @@ npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les r�
 npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
 npx tsx scripts/recette-chirurgien-reference.ts       # 22 contrôles : référence à côté du texte, liste, geste
-npx tsx scripts/recette-majoration-chirurgien.ts      # 50 contrôles : règle, trace gelée, réajustement, gardes de source
+npx tsx scripts/recette-majoration-chirurgien.ts      # 66 contrôles : règle, trace gelée, mémoire des montants posés, gardes de source
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

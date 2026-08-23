@@ -30,7 +30,8 @@ export function SelecteurModele({
   /** Libellés d'usage (« valide » seulement) qui étendent la recherche. */
   correspondances?: Correspondance[];
   /** Chirurgien du document : les prix affichés sont ceux que le geste
-      d'appliquer posera (lib/catalogue.ts, tarifsPourMedecin). Vide → catalogue. */
+      d'appliquer posera sur un montant vide (lib/catalogue.ts,
+      tarifsPourMedecin) — un montant déjà saisi reste. Vide → catalogue. */
   medecinId?: string;
 }) {
   const prix = (m: Modele) => (m.surDevis ? 'sur devis' : money(tarifsPourMedecin(m, medecinId).promo, devise));

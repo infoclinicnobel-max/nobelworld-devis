@@ -20,7 +20,10 @@ import {
   devisEstClasse, devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf,
   validiteDepassee,
 } from '@/lib/calc';
-import { nettoyerActes, reajusterPrixSysteme, tarifsPourMedecin, traceMajoration } from '@/lib/catalogue';
+import {
+  nettoyerActes, reajusterPrixSysteme, retenirForfaitSysteme, retenirOptionSysteme, tarifsPourMedecin,
+  traceMajoration,
+} from '@/lib/catalogue';
 import { choisirMedecin } from '@/lib/medecins';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
@@ -568,20 +571,25 @@ export function DevisEditor({
       const vide = options.findIndex(
         (o) => !String(o.nom || '').trim() && !String(o.detail || '').trim() && !Number(o.prix),
       );
+      // Le tarif du catalogue, pour le chirurgien du devis, est proposé sur un
+      // prix vide ; un prix déjà saisi reste. L'éditeur retient lequel des deux.
+      const systeme = tarifsPourMedecin(m, idTarif(s)).promo;
+      const prixSaisi = vide >= 0 && Number(options[vide].prix) ? Number(options[vide].prix) : 0;
       // Libellé et détail dans DEUX champs distincts — jamais « libellé: description ».
       const ligne = {
         id: vide >= 0 ? options[vide].id || uid('o') : uid('o'),
         nom: m.nom,
         detail: description,
         qty: 1,
-        // Le tarif du catalogue, pour le chirurgien du devis, est proposé ; il reste modifiable à la main.
-        prix: vide >= 0 && Number(options[vide].prix) ? Number(options[vide].prix) : tarifsPourMedecin(m, idTarif(s)).promo,
+        prix: prixSaisi || systeme,
         // Une option issue du catalogue se décide en consultation, comme les autres.
         retenue: vide >= 0 ? options[vide].retenue !== false : false,
       };
       if (vide >= 0) options[vide] = ligne;
       else options.push(ligne);
-      return isEdit ? { ...s, options } : { ...s, options, majoration: traceMajoration(s.medecinId) };
+      if (isEdit) return { ...s, options };
+      const suite = prixSaisi ? { ...s, options } : retenirOptionSysteme({ ...s, options }, ligne.id, m, systeme);
+      return { ...suite, majoration: traceMajoration(s.medecinId) };
     });
     signaler(m, description);
   };
@@ -598,7 +606,7 @@ export function DevisEditor({
       setF((s) => {
         const apres = choisirMedecin(s, id, data.medecins);
         if (isEdit || apres === s || apres.medecinId === s.medecinId) return apres;
-        return reajusterPrixSysteme(apres, String(s.medecinId || ''), String(apres.medecinId || ''), data.modeles);
+        return reajusterPrixSysteme(apres, String(apres.medecinId || ''), data.modeles);
       }),
     set: (k, v) => setF((s) => ({ ...s, [k]: v })),
     addActe: () => setF((s) => ({ ...s, actes: [...(s.actes || []), { id: uid('a'), acte: '', inclus: '' }] })),
@@ -639,14 +647,21 @@ export function DevisEditor({
      plus de l'acte, les prestations incluses / exclues et le forfait. L'écriture
      de l'acte passe par acteDepuisModele — une seule règle, pas deux. */
   const applyModele = (m: Modele) => {
-    setF((s) => ({
-      ...s,
-      modeleId: m.id,
-      inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
-      exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
-      forfait: Number(s.forfait) || tarifsPourMedecin(m, idTarif(s)).promo,
-      ...(isEdit ? {} : { majoration: traceMajoration(s.medecinId) }),
-    }));
+    setF((s) => {
+      // Le forfait du modèle n'est posé que sur un forfait vide : un forfait
+      // déjà là — saisi, ou celui d'un modèle précédent — reste.
+      const systeme = tarifsPourMedecin(m, idTarif(s)).promo;
+      const base: DocRecord = {
+        ...s,
+        modeleId: m.id,
+        inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
+        exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
+        forfait: Number(s.forfait) || systeme,
+      };
+      if (isEdit) return base;
+      const suite = Number(s.forfait) ? base : retenirForfaitSysteme(base, m, systeme);
+      return { ...suite, majoration: traceMajoration(s.medecinId) };
+    });
     acteDepuisModele(m);
   };
 

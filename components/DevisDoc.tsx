@@ -682,21 +682,33 @@ export function DevisDoc({
                 <div className="k">Chirurgien</div>
                 <div className="val">
                   {E && on!.medecins?.length && on!.setMedecin ? (
-                    <select
-                      className="ed"
-                      value={record.medecinId || ''}
-                      onChange={(e) => on!.setMedecin!(e.target.value)}
-                    >
-                      {/* Ligne vide en tête, jamais pré-remplie. Un document
-                          d'avant le 23/08 dont le texte n'a pas de référence
-                          montre ici ce texte — celui qui s'imprime. */}
-                      <option value="">
-                        {!record.medecinId && record.chirurgien ? record.chirurgien : 'À confirmer'}
-                      </option>
-                      {ordonnerMedecins(on!.medecins).map((m) => (
-                        <option key={m.id} value={m.id}>{m.nomAffiche}</option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        className="ed"
+                        value={record.medecinId || ''}
+                        onChange={(e) => on!.setMedecin!(e.target.value)}
+                      >
+                        {/* Ligne vide en tête, jamais pré-remplie. Un document
+                            d'avant le 23/08 dont le texte n'a pas de référence
+                            montre ici ce texte — celui qui s'imprime. */}
+                        <option value="">
+                          {!record.medecinId && record.chirurgien ? record.chirurgien : 'À confirmer'}
+                        </option>
+                        {ordonnerMedecins(on!.medecins).map((m) => (
+                          <option key={m.id} value={m.id}>{m.nomAffiche}</option>
+                        ))}
+                      </select>
+                      {/* Document rattaché par la reprise du 23/08 dont le texte
+                          diverge du libellé (« Dr Azar » → Dr Azar Zeynalov) :
+                          le PDF imprime le texte stocké, pas la liste. Dit ici,
+                          ÉDITEUR SEULEMENT — une lecture, jamais une écriture. */}
+                      {!!record.medecinId && !!record.chirurgien
+                        && on!.medecins.some((m) => m.id === record.medecinId && m.nomAffiche !== record.chirurgien) && (
+                        <div style={{ fontSize: 10.5, lineHeight: 1.4, marginTop: 2, color: 'var(--muted-2)' }}>
+                          imprimé : {record.chirurgien}
+                        </div>
+                      )}
+                    </>
                   ) : E ? (
                     <EditableText value={record.chirurgien} placeholder="Dr …" onChange={(v) => set('chirurgien', v)} />
                   ) : (

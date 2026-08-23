@@ -44,10 +44,18 @@ export interface DocOption {
   retenue?: boolean;
 }
 
+/** Un montant posé par le système : pour quel modèle, et combien. */
+export interface PrixSysteme { modeleId: string; prix: number }
+
 /** Devis ET facture partagent la même forme : le PDF est rendu par un seul composant. */
 export interface DocRecord {
   /** Ligne Postgres d'origine : sert à ne réécrire que ce qui a réellement changé. */
   _row?: Record<string, unknown>;
+  /** Mémoire de l'éditeur, JAMAIS enregistrée (lib/mappers.ts n'en connaît pas
+      la clé) : les montants que le système a posés — modèle et chirurgien du
+      moment — seuls montants que le changement de chirurgien suit
+      (lib/catalogue.ts, reajusterPrixSysteme). */
+  _systeme?: { forfait?: PrixSysteme; options?: Record<string, PrixSysteme> };
   id?: string;
   numero?: string;
   patientId?: string;

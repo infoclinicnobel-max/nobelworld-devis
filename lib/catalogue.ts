@@ -8,7 +8,7 @@
    du CRM sont déjà remplies. Rien n'est écrit au catalogue, jamais. */
 
 import { safeLower } from './format';
-import type { Acte, DocRecord, Modele } from './types';
+import type { Acte, DocRecord, Modele, PrixSysteme } from './types';
 
 /** Une ligne de `catalogue_correspondances`, telle que chargée dans AppData. */
 export interface Correspondance { libelle: string; catalogueId: string | null; statut: string }
@@ -213,8 +213,15 @@ export function estMajorable(m: Pick<Modele, 'id' | 'categorie'>): boolean {
   return m.categorie === 'esthetique' || m.id === 'sup-zone-liposuccion';
 }
 
+/* Clé propre seulement : `MAJORATIONS['constructor']` rendrait une fonction,
+   « truthy », et un tarif NaN — mesuré par la vérification adverse du 23/08. */
+const tauxDe = (medecinId?: string): number => {
+  const cle = String(medecinId || '');
+  return Object.prototype.hasOwnProperty.call(MAJORATIONS, cle) ? MAJORATIONS[cle] : 0;
+};
+
 export function tauxMajoration(m: Pick<Modele, 'id' | 'categorie'>, medecinId?: string): number {
-  const taux = MAJORATIONS[String(medecinId || '')] || 0;
+  const taux = tauxDe(medecinId);
   return taux && estMajorable(m) ? taux : 0;
 }
 
@@ -240,32 +247,63 @@ export function tarifsPourMedecin(m: Modele, medecinId?: string): TarifsMedecin 
 /** Ce que le document garde de la règle en vigueur pour son chirurgien — gelé
     à l'enregistrement (lib/mappers.ts), jamais rendu. `undefined` sans règle. */
 export function traceMajoration(medecinId?: string): DocRecord['majoration'] {
-  const taux = MAJORATIONS[String(medecinId || '')] || 0;
+  const taux = tauxDe(medecinId);
   return taux ? { medecinId: String(medecinId), taux } : undefined;
 }
 
-/* Au changement de chirurgien sur un devis NEUF : un montant encore au prix
-   système — celui que le geste d'appliquer avait posé pour l'ancien
-   chirurgien — passe au prix système du nouveau. Un montant saisi à la main,
-   différent du prix système, n'est JAMAIS touché ; une ligne sans modèle
-   reconnu (forfait sans modeleId, option hors catalogue) non plus. Les
-   options se reconnaissent à leur libellé, comme la pastille de l'éditeur.
-   Un prix saisi à la main qui vaudrait par coïncidence le prix système est
-   réajusté aussi : c'est la limite, nommée, de ce qu'un montant peut dire. */
-export function reajusterPrixSysteme(
-  d: DocRecord, ancienId: string, nouveauId: string, modeles: Modele[],
-): DocRecord {
-  const avant = (m: Modele) => tarifsPourMedecin(m, ancienId).promo;
-  const apres = (m: Modele) => tarifsPourMedecin(m, nouveauId).promo;
+/* ---- la mémoire des montants posés par le système ----
+
+   Un montant ne dit pas d'où il vient : 4 455 peut être le prix système de
+   Zeynalov sur la lipo Vaser 360 — ou une saisie ; 3 300 peut être le prix
+   du modèle appliqué en premier, conservé sous le modeleId du second (le
+   forfait n'est posé que sur un forfait vide). Reconnaître un « prix
+   système » par égalité avec un tarif du catalogue se trompait donc dans les
+   deux sens — mesuré par la vérification adverse du 23/08, 1 155 € d'écart.
+
+   L'éditeur RETIENT ce que le système a posé, et pour quel modèle :
+   `_systeme`, mémoire de la saisie, jamais enregistrée. Au changement de
+   chirurgien, seul un montant encore égal à ce qui a été posé suit le
+   nouveau chirurgien ; tout le reste — saisi à la main, hérité d'une
+   duplication, conservé d'un modèle précédent — ne bouge pas. */
+export function retenirForfaitSysteme(d: DocRecord, m: Modele, prix: number): DocRecord {
+  return { ...d, _systeme: { ...(d._systeme || {}), forfait: { modeleId: m.id, prix } } };
+}
+
+export function retenirOptionSysteme(d: DocRecord, optionId: string, m: Modele, prix: number): DocRecord {
+  return {
+    ...d,
+    _systeme: {
+      ...(d._systeme || {}),
+      options: { ...(d._systeme?.options || {}), [optionId]: { modeleId: m.id, prix } },
+    },
+  };
+}
+
+/* Au changement de chirurgien sur un devis NEUF. Sans mémoire (document
+   dupliqué, converti, ou sans geste du système), rien ne bouge ; une ligne
+   dont le modèle a quitté le catalogue garde son montant. */
+export function reajusterPrixSysteme(d: DocRecord, nouveauId: string, modeles: Modele[]): DocRecord {
+  const memoire = d._systeme || {};
+  const suivant = (p: PrixSysteme | undefined, actuel: unknown): PrixSysteme | undefined => {
+    if (!p || Number(actuel) !== p.prix) return undefined;
+    const m = modeles.find((x) => x.id === p.modeleId);
+    return m ? { modeleId: m.id, prix: tarifsPourMedecin(m, nouveauId).promo } : undefined;
+  };
   const out: DocRecord = { ...d, majoration: traceMajoration(nouveauId) };
-  const modele = d.modeleId ? modeles.find((m) => m.id === d.modeleId) : undefined;
-  if (modele && Number(d.forfait) === avant(modele)) out.forfait = apres(modele);
-  if (Array.isArray(d.options)) {
+  const nouvelleMemoire = { ...memoire };
+  const f = suivant(memoire.forfait, d.forfait);
+  if (f) { out.forfait = f.prix; nouvelleMemoire.forfait = f; }
+  if (Array.isArray(d.options) && memoire.options) {
+    const opts = { ...memoire.options };
     out.options = d.options.map((o) => {
-      const cle = cleLibelle(o.nom);
-      const m = cle ? modeles.find((x) => cleLibelle(x.nom) === cle) : undefined;
-      return m && Number(o.prix) === avant(m) ? { ...o, prix: apres(m) } : o;
+      const id = String(o.id || '');
+      const n = id ? suivant(opts[id], o.prix) : undefined;
+      if (!n) return o;
+      opts[id] = n;
+      return { ...o, prix: n.prix };
     });
+    nouvelleMemoire.options = opts;
   }
+  out._systeme = nouvelleMemoire;
   return out;
 }

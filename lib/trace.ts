@@ -44,6 +44,10 @@ const SCALAIRES: readonly ChampScalaire[] = [
   { cle: 'dateIntervention', libelle: "date d'intervention" },
   { cle: 'validite', libelle: 'validité' },
   { cle: 'chirurgien', libelle: 'chirurgien' },
+  /* La référence (23/08) à côté du texte : poser une référence sur une facture
+     dont le texte est déjà canonique est une modification — sans cette ligne,
+     le crayon dirait « Aucune modification » et n'écrirait rien. */
+  { cle: 'medecinId', libelle: 'chirurgien (référence)' },
   { cle: 'hopital', libelle: 'clinique' },
   { cle: 'devise', libelle: 'devise' },
   { cle: 'remiseMotif', libelle: 'motif de la remise' },

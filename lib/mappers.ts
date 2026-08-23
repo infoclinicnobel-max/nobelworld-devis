@@ -167,7 +167,10 @@ function contenuAncien(d: DocRecord): Row | null {
   const raw = d._row as Row | undefined;
   if (!raw || raw.id !== d.id) return null;                 // document neuf
   const c = raw.contenu;
-  return c && typeof c === 'object' ? (c as Row) : null;
+  /* Un document existant dont `contenu` est NULL en base reste un document
+     EXISTANT : ses clés gelées sont absentes et le restent, ses coordonnées
+     bancaires ne sont pas créées. Le traiter comme neuf (null) levait le gel. */
+  return c && typeof c === 'object' ? (c as Row) : {};
 }
 
 function contenuOf(d: DocRecord): Row {
@@ -175,15 +178,16 @@ function contenuOf(d: DocRecord): Row {
   const c: Row = {};
   for (const k of CONTENU_KEYS) {
     const v = (d as Row)[k];
+    /* Le gel se décide AVANT le saut des valeurs absentes : mesuré le 23/08,
+       un formulaire qui portait la clé à `undefined` effaçait une trace
+       stockée — le gel ne tenait alors que par les gardes de l'éditeur. */
+    if (ancien && (CLES_GELEES as readonly string[]).includes(k)) {
+      if (k in ancien) c[k] = ancien[k];                    // gelé sur le stocké
+      continue;                                             // absent → reste absent
+    }
     if (v === undefined) continue;
     if (k === 'options') { c[k] = preserverAbsenceRetenue(d, v); continue; }
-    if (ancien) {
-      if ((CLES_GELEES as readonly string[]).includes(k)) {
-        if (k in ancien) c[k] = ancien[k];                  // gelé sur le stocké
-        continue;                                           // absent → reste absent
-      }
-      if ((CLES_NON_CREEES as readonly string[]).includes(k) && !(k in ancien)) continue;
-    }
+    if (ancien && (CLES_NON_CREEES as readonly string[]).includes(k) && !(k in ancien)) continue;
     c[k] = v;
   }
   return c;

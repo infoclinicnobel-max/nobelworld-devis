@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ico } from './icons';
 import { money } from '@/lib/format';
 import {
-  detecterAmbiguites, filtrerModeles, grouperModeles, type Correspondance,
+  detecterAmbiguites, filtrerModeles, grouperModeles, tarifsPourMedecin, type Correspondance,
 } from '@/lib/catalogue';
 import type { Modele } from '@/lib/types';
 
@@ -20,7 +20,7 @@ import type { Modele } from '@/lib/types';
    ------------------------------------------------------------------------- */
 export function SelecteurModele({
   modeles, onChoisir, libelle = 'Appliquer un modèle', devise = '€', className = 'addrow',
-  correspondances,
+  correspondances, medecinId,
 }: {
   modeles: Modele[];
   onChoisir: (m: Modele) => void;
@@ -29,7 +29,11 @@ export function SelecteurModele({
   className?: string;
   /** Libellés d'usage (« valide » seulement) qui étendent la recherche. */
   correspondances?: Correspondance[];
+  /** Chirurgien du document : les prix affichés sont ceux que le geste
+      d'appliquer posera (lib/catalogue.ts, tarifsPourMedecin). Vide → catalogue. */
+  medecinId?: string;
 }) {
+  const prix = (m: Modele) => (m.surDevis ? 'sur devis' : money(tarifsPourMedecin(m, medecinId).promo, devise));
   const [ouvert, setOuvert] = useState(false);
   const [q, setQ] = useState('');
   const boite = useRef<HTMLDivElement>(null);
@@ -94,7 +98,7 @@ export function SelecteurModele({
               {a.lignes.map((m) => (
                 <button key={m.id} type="button" className="modsel-it" onClick={() => choisir(m)}>
                   <span className="nm">{m.nom}</span>
-                  <span className="px">{m.surDevis ? 'sur devis' : money(m.prixBase, devise)}</span>
+                  <span className="px">{prix(m)}</span>
                 </button>
               ))}
             </div>
@@ -106,7 +110,7 @@ export function SelecteurModele({
                 {g.items.map((m) => (
                   <button key={m.id} type="button" className="modsel-it" onClick={() => choisir(m)}>
                     <span className="nm">{m.nom}</span>
-                    <span className="px">{m.surDevis ? 'sur devis' : money(m.prixBase, devise)}</span>
+                    <span className="px">{prix(m)}</span>
                   </button>
                 ))}
               </div>

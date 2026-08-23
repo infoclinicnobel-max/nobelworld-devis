@@ -8,7 +8,7 @@
    du CRM sont déjà remplies. Rien n'est écrit au catalogue, jamais. */
 
 import { safeLower } from './format';
-import type { Acte, Modele } from './types';
+import type { Acte, DocRecord, Modele } from './types';
 
 /** Une ligne de `catalogue_correspondances`, telle que chargée dans AppData. */
 export interface Correspondance { libelle: string; catalogueId: string | null; statut: string }
@@ -187,4 +187,85 @@ export function detecterAmbiguites(modeles: Modele[], recherche: string): Ambigu
     .filter(([, lignes]) => lignes.length > 1)
     .map(([terme, lignes]) => ({ terme, lignes: [...lignes].sort(parNom) }))
     .sort((a, b) => a.terme.localeCompare(b.terme, 'fr'));
+}
+
+/* ------------------------------------------------- tarifs par chirurgien
+
+   Règle de Veys, 23 août : les actes esthétiques du Dr Azar Zeynalov sont
+   majorés de 35 % — hors bariatrique, hors capillaire (et hors dentaire). La
+   paire du catalogue est majorée, promo ET standard quand il existe ; le
+   devis prend le promo majoré ; les options aussi (zone de liposuccion
+   500 → 675). Lue sur `medecinId` — la référence — jamais sur le texte.
+
+   Le catalogue n'est PAS écrit : la majoration se calcule ici, au geste
+   d'appliquer, et se fige dans le document comme n'importe quel tarif — un
+   devis envoyé ne relit rien (lib/calc.ts). Elle n'apparaît sur aucun
+   document : la patiente voit 4 455 €, pas 3 300 € + 35 %. Elle ne vaut que
+   pour un devis NEUF ; les 25 devis d'avant gardent leurs montants. */
+
+export const MAJORATIONS: Readonly<Record<string, number>> = { med_azar_zeynalov: 0.35 };
+
+/* Périmètre : toute l'esthétique, plus la zone de liposuccion supplémentaire
+   — seule ligne de la catégorie « supplement » au 23 août, et un acte
+   esthétique par nature. Une autre ligne « supplement » qui apparaîtrait au
+   catalogue ne serait PAS majorée sans décision. */
+export function estMajorable(m: Pick<Modele, 'id' | 'categorie'>): boolean {
+  return m.categorie === 'esthetique' || m.id === 'sup-zone-liposuccion';
+}
+
+export function tauxMajoration(m: Pick<Modele, 'id' | 'categorie'>, medecinId?: string): number {
+  const taux = MAJORATIONS[String(medecinId || '')] || 0;
+  return taux && estMajorable(m) ? taux : 0;
+}
+
+export interface TarifsMedecin {
+  promo: number;
+  standard: number | null;
+  taux: number;
+}
+
+/** La paire de tarifs d'une ligne pour un chirurgien, arrondie à l'euro.
+    Sans chirurgien, ou hors périmètre : la paire du catalogue telle quelle.
+    Un standard absent reste absent (dix lignes esthétiques n'en ont pas). */
+export function tarifsPourMedecin(m: Modele, medecinId?: string): TarifsMedecin {
+  const taux = tauxMajoration(m, medecinId);
+  const majorer = (p: number) => Math.round(p * (1 + taux));
+  return {
+    promo: taux ? majorer(m.prixBase) : m.prixBase,
+    standard: m.prixStandard == null ? null : taux ? majorer(m.prixStandard) : m.prixStandard,
+    taux,
+  };
+}
+
+/** Ce que le document garde de la règle en vigueur pour son chirurgien — gelé
+    à l'enregistrement (lib/mappers.ts), jamais rendu. `undefined` sans règle. */
+export function traceMajoration(medecinId?: string): DocRecord['majoration'] {
+  const taux = MAJORATIONS[String(medecinId || '')] || 0;
+  return taux ? { medecinId: String(medecinId), taux } : undefined;
+}
+
+/* Au changement de chirurgien sur un devis NEUF : un montant encore au prix
+   système — celui que le geste d'appliquer avait posé pour l'ancien
+   chirurgien — passe au prix système du nouveau. Un montant saisi à la main,
+   différent du prix système, n'est JAMAIS touché ; une ligne sans modèle
+   reconnu (forfait sans modeleId, option hors catalogue) non plus. Les
+   options se reconnaissent à leur libellé, comme la pastille de l'éditeur.
+   Un prix saisi à la main qui vaudrait par coïncidence le prix système est
+   réajusté aussi : c'est la limite, nommée, de ce qu'un montant peut dire. */
+export function reajusterPrixSysteme(
+  d: DocRecord, ancienId: string, nouveauId: string, modeles: Modele[],
+): DocRecord {
+  const avant = (m: Modele) => tarifsPourMedecin(m, ancienId).promo;
+  const apres = (m: Modele) => tarifsPourMedecin(m, nouveauId).promo;
+  const out: DocRecord = { ...d, majoration: traceMajoration(nouveauId) };
+  const modele = d.modeleId ? modeles.find((m) => m.id === d.modeleId) : undefined;
+  if (modele && Number(d.forfait) === avant(modele)) out.forfait = apres(modele);
+  if (Array.isArray(d.options)) {
+    out.options = d.options.map((o) => {
+      const cle = cleLibelle(o.nom);
+      const m = cle ? modeles.find((x) => cleLibelle(x.nom) === cle) : undefined;
+      return m && Number(o.prix) === avant(m) ? { ...o, prix: apres(m) } : o;
+    });
+  }
+  return out;
 }

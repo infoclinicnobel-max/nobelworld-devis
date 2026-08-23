@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Empty, Field, Input, Modal } from './ui';
+import { Empty, Field, Input, Modal, Select } from './ui';
 import { Ico } from './icons';
 import { useApp } from './AppContext';
 import { money, safeLower } from '@/lib/format';
 import { can } from '@/lib/perms';
 import { UNSAVED_MSG } from '@/lib/defaults';
-import type { OptionCat } from '@/lib/types';
+import { MAJORATIONS, tarifsPourMedecin } from '@/lib/catalogue';
+import { ordonnerMedecins } from '@/lib/medecins';
+import type { Modele, OptionCat } from '@/lib/types';
 
 /* =========================================================================
    MODÈLES DE DEVIS — adossés à `catalogue_interventions`, propriété du CRM.
@@ -21,6 +23,13 @@ export function ModelesView() {
   const list = s
     ? data.modeles.filter((m) => [m.nom, m.categorie, m.sousCategorie, m.description].some((v) => safeLower(v).includes(s)))
     : data.modeles;
+  /* Tarifs affichés pour un chirurgien : la paire du catalogue telle que le
+     geste d'appliquer la posera sur un devis neuf (lib/catalogue.ts). Un
+     affichage, jamais une écriture au catalogue. */
+  const [medecinId, setMedecinId] = useState('');
+  const tarif = (m: Modele) => tarifsPourMedecin(m, medecinId);
+  const tauxAffiche = MAJORATIONS[medecinId] || 0;
+  const nomMedecin = data.medecins.find((m) => m.id === medecinId)?.nomAffiche || '';
 
   /* Anciens libellés Nobel World restés sans correspondance au catalogue :
      l'application le signale à l'écran, elle ne crée jamais de ligne. */
@@ -42,6 +51,19 @@ export function ModelesView() {
           </div>
         </div>
         <div className="sp" />
+        {!!data.medecins.length && (
+          <Select
+            value={medecinId}
+            onChange={(e) => setMedecinId(e.target.value)}
+            style={{ maxWidth: 240 }}
+            title="Tarifs affichés pour ce chirurgien"
+          >
+            <option value="">Tarifs du catalogue</option>
+            {ordonnerMedecins(data.medecins).map((m) => (
+              <option key={m.id} value={m.id}>{m.nomAffiche}</option>
+            ))}
+          </Select>
+        )}
         <div className="search" style={{ maxWidth: 280 }}>
           <Ico.search size={16} className="ic" />
           <input placeholder="Rechercher une prestation…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -54,6 +76,13 @@ export function ModelesView() {
       >
         <b>Catalogue en lecture seule.</b> Les tarifs et les libellés appartiennent au CRM Clinic Nobel : Nobel World
         les applique aux devis mais ne les modifie jamais. Une prestation manquante doit être ajoutée dans le CRM.
+        {tauxAffiche > 0 && (
+          <>
+            {' '}<b>Tarifs affichés pour {nomMedecin} :</b> actes esthétiques majorés de {Math.round(tauxAffiche * 100)} %
+            (règle du 23 août) — bariatrique, capillaire et dentaire inchangés. La majoration se calcule au devis ;
+            le catalogue du CRM n&apos;est pas modifié.
+          </>
+        )}
       </div>
 
       {!!sansCorrespondance.length && (
@@ -96,12 +125,12 @@ export function ModelesView() {
                 </div>
               </div>
               <span className="badge b-part" style={{ whiteSpace: 'nowrap' }}>
-                {m.surDevis ? 'Sur devis' : money(m.prixBase, cur)}
+                {m.surDevis ? 'Sur devis' : money(tarif(m).promo, cur)}
               </span>
             </div>
-            {m.prixStandard != null && m.prixStandard !== m.prixBase && !m.surDevis && (
+            {tarif(m).standard != null && tarif(m).standard !== tarif(m).promo && !m.surDevis && (
               <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
-                Tarif standard : {money(m.prixStandard, cur)}
+                Tarif standard : {money(tarif(m).standard as number, cur)}
               </div>
             )}
             {m.description ? (

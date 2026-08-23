@@ -784,6 +784,7 @@ export function DevisDoc({
                       devise={cur}
                       libelle="Appliquer un modèle à un acte"
                       correspondances={on!.correspondances}
+                      medecinId={record.id ? '' : record.medecinId}
                       onChoisir={(m) => on!.acteDepuisModele!(m)}
                     />
                   )}
@@ -858,6 +859,7 @@ export function DevisDoc({
                         devise={cur}
                         libelle="Appliquer un modèle à une option"
                         correspondances={on!.correspondances}
+                        medecinId={record.id ? '' : record.medecinId}
                         onChoisir={(m) => on!.optDepuisModele!(m)}
                       />
                     )}

@@ -117,6 +117,22 @@ Autres invariants :
   l'ordre alphabétique, aucun pré-remplissage ; choisir est le SEUL geste qui change le
   texte. Table illisible → liste vide, saisie libre conservée. `lib/medecins.ts` ;
   `scripts/recette-chirurgien-reference.ts`.
+- **La majoration par chirurgien se calcule au geste, ne se stocke pas au catalogue, ne
+  s'imprime pas** : règle du 23 août, les actes esthétiques du Dr Azar Zeynalov sont majorés
+  de 35 % — hors bariatrique, capillaire et dentaire. Périmètre : `categorie = 'esthetique'`
+  plus `sup-zone-liposuccion`, seule ligne « supplement » ce jour-là. La paire du catalogue
+  est majorée (promo ET standard quand il existe ; les dix lignes esthétiques sans standard
+  gardent un standard absent), arrondie à l'euro ; le devis prend le promo majoré (lipo Vaser
+  360 : 3 300 → 4 455 €), les options aussi (zone : 500 → 675 €). Lue sur `medecinId`, jamais
+  sur le texte. **Devis neuf seulement** : un devis déjà en base garde ses montants quel que
+  soit le chirurgien choisi ensuite ; un montant saisi à la main n'est jamais écrasé — au
+  changement de chirurgien, seul un montant encore au prix système passe au prix système du
+  nouveau ; duplication et conversion en facture reprennent les montants tels quels. La
+  patiente voit 4 455 €, pas 3 300 € + 35 % : aucune ligne sur le document, `lib/calc.ts`
+  ignore tout de la règle ; `contenu.majoration` garde la trace, gelée comme `promoJours`.
+  Le sélecteur et la Bibliothèque (liste « Tarifs affichés pour… ») montrent la paire majorée.
+  `catalogue_interventions` n'est jamais écrit. `lib/catalogue.ts` (`MAJORATIONS`,
+  `tarifsPourMedecin`, `reajusterPrixSysteme`) ; `scripts/recette-majoration-chirurgien.ts`.
 - **Toute écriture de la remontée laisse une trace, dans le MÊME update** : une entrée par
   colonne dans `patients.historique` — le journal de fiche du CRM, format
   `{u, date, heure, champ, ancien, nouveau, motif}`, `motif` portant le document source —
@@ -307,6 +323,7 @@ npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les r�
 npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
 npx tsx scripts/recette-chirurgien-reference.ts       # 22 contrôles : référence à côté du texte, liste, geste
+npx tsx scripts/recette-majoration-chirurgien.ts      # 50 contrôles : règle, trace gelée, réajustement, gardes de source
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

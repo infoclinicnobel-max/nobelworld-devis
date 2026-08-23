@@ -59,6 +59,7 @@ export function patientToRow(p: Partial<Patient>, auteur: string): Row {
 const CONTENU_KEYS = [
   'actes', 'inc', 'exc', 'options', 'importantList', 'paiementNote', 'cgv', 'legal', 'important',
   'bqNom', 'bqIban', 'bqBic', 'bqAdresse', 'promoJours', 'modeleId', 'pagesMode', 'lignes', 'factNotes',
+  'majoration',
 ] as const;
 
 function baseRowToDoc(r: Row): DocRecord {
@@ -154,8 +155,12 @@ function preserverAbsenceRetenue(d: DocRecord, options: unknown): unknown {
      toute variation ne peut donc venir que du défaut) ;
    - les coordonnées bancaires ne sont pas CRÉÉES si elles étaient absentes,
      mais restent modifiables quand elles existent — le bouton « actualiser les
-     coordonnées bancaires » des factures doit continuer de fonctionner. */
-const CLES_GELEES = ['promoJours'] as const;
+     coordonnées bancaires » des factures doit continuer de fonctionner ;
+   - `majoration` (23 août) : la trace de la règle tarifaire par chirurgien est
+     gelée comme `promoJours` — un devis déjà en base ne reçoit ni ne perd de
+     trace, quel que soit le chirurgien choisi ensuite ; ses montants ne sont
+     pas recalculés non plus (components/Devis.tsx, devis neuf seulement). */
+const CLES_GELEES = ['promoJours', 'majoration'] as const;
 const CLES_NON_CREEES = ['bqNom', 'bqIban', 'bqBic', 'bqAdresse'] as const;
 
 function contenuAncien(d: DocRecord): Row | null {

@@ -91,6 +91,10 @@ export interface DocRecord {
   modeleId?: string;
   pagesMode?: string;
   lignes?: { desc?: string; qty?: number; pu?: number }[];
+  /* Règle tarifaire par chirurgien en vigueur au dernier geste (lib/catalogue.ts) :
+     une trace gelée à l'enregistrement, jamais rendue sur le document. Absente
+     quand aucune règle ne s'applique. */
+  majoration?: { medecinId: string; taux: number };
 
   /* --- factures uniquement --- */
   numeroDevis?: string;

@@ -20,7 +20,7 @@ import {
   devisEstClasse, devisTotal, estFige, patientName, remiseMontant, totalAvantRemise, totalOf,
   validiteDepassee,
 } from '@/lib/calc';
-import { nettoyerActes } from '@/lib/catalogue';
+import { nettoyerActes, reajusterPrixSysteme, tarifsPourMedecin, traceMajoration } from '@/lib/catalogue';
 import { choisirMedecin } from '@/lib/medecins';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
@@ -536,6 +536,11 @@ export function DevisEditor({
      catalogue évolue. */
   const descriptionDe = (m: Modele) => (typeof m.description === 'string' ? m.description : '');
 
+  /* Tarifs par chirurgien (lib/catalogue.ts) — devis NEUF seulement. Un devis
+     déjà en base garde ses montants quel que soit le chirurgien choisi
+     ensuite : ici, son chirurgien vaut « aucun » pour la règle. */
+  const idTarif = (s: DocRecord) => (isEdit ? '' : String(s.medecinId || ''));
+
   const signaler = (m: Modele, description: string) => {
     const alertes: string[] = [];
     if (m.surDevis) alertes.push('tarif sur devis, saisissez le forfait');
@@ -569,14 +574,14 @@ export function DevisEditor({
         nom: m.nom,
         detail: description,
         qty: 1,
-        // Le tarif du catalogue est proposé ; il reste modifiable à la main.
-        prix: vide >= 0 && Number(options[vide].prix) ? Number(options[vide].prix) : m.prixBase,
+        // Le tarif du catalogue, pour le chirurgien du devis, est proposé ; il reste modifiable à la main.
+        prix: vide >= 0 && Number(options[vide].prix) ? Number(options[vide].prix) : tarifsPourMedecin(m, idTarif(s)).promo,
         // Une option issue du catalogue se décide en consultation, comme les autres.
         retenue: vide >= 0 ? options[vide].retenue !== false : false,
       };
       if (vide >= 0) options[vide] = ligne;
       else options.push(ligne);
-      return { ...s, options };
+      return isEdit ? { ...s, options } : { ...s, options, majoration: traceMajoration(s.medecinId) };
     });
     signaler(m, description);
   };
@@ -586,7 +591,15 @@ export function DevisEditor({
     patients: data.patients,
     paiements: data.paiements,
     medecins: data.medecins,
-    setMedecin: (id) => setF((s) => choisirMedecin(s, id, data.medecins)),
+    /* Changer de chirurgien sur un devis NEUF réajuste les montants encore au
+       prix système vers le prix système du nouveau ; jamais un montant saisi à
+       la main, jamais un devis déjà en base (lib/catalogue.ts). */
+    setMedecin: (id) =>
+      setF((s) => {
+        const apres = choisirMedecin(s, id, data.medecins);
+        if (isEdit || apres === s || apres.medecinId === s.medecinId) return apres;
+        return reajusterPrixSysteme(apres, String(s.medecinId || ''), String(apres.medecinId || ''), data.modeles);
+      }),
     set: (k, v) => setF((s) => ({ ...s, [k]: v })),
     addActe: () => setF((s) => ({ ...s, actes: [...(s.actes || []), { id: uid('a'), acte: '', inclus: '' }] })),
     setActe: (id, k, v) =>
@@ -631,7 +644,8 @@ export function DevisEditor({
       modeleId: m.id,
       inc: m.inc && m.inc.length ? [...m.inc] : s.inc || [],
       exc: m.exc && m.exc.length ? [...m.exc] : s.exc || [],
-      forfait: Number(s.forfait) || m.prixBase,
+      forfait: Number(s.forfait) || tarifsPourMedecin(m, idTarif(s)).promo,
+      ...(isEdit ? {} : { majoration: traceMajoration(s.medecinId) }),
     }));
     acteDepuisModele(m);
   };
@@ -834,6 +848,7 @@ export function DevisEditor({
               libelle="Appliquer un modèle au devis"
               className="btn btn-sm"
               correspondances={data.correspondances}
+              medecinId={isEdit ? '' : f.medecinId}
               onChoisir={applyModele}
             />
             <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, margin: '6px 0 0' }}>

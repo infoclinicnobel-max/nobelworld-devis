@@ -10,6 +10,7 @@ import { PatientsView } from './Patients';
 import { DevisView } from './Devis';
 import { FacturesView } from './Factures';
 import { PaiementsView } from './Paiements';
+import { CaisseView } from './Caisse';
 import { HistoriqueView, ModelesView, OptionsView } from './Bibliotheque';
 import { ParametresView } from './Parametres';
 import { UtilisateursView } from './Utilisateurs';
@@ -25,6 +26,7 @@ const NAV: { k?: string; label?: string; icon?: IconType; sec?: string; adminOnl
   { k: 'devis', label: 'Devis', icon: Ico.doc },
   { k: 'factures', label: 'Factures', icon: Ico.invoice },
   { k: 'paiements', label: 'Paiements', icon: Ico.wallet },
+  { k: 'caisse', label: 'Caisse', icon: Ico.euro },
   { k: 'patients', label: 'Patients', icon: Ico.patient },
   { sec: 'Bibliothèque' },
   { k: 'modeles', label: 'Modèles de devis', icon: Ico.tpl },
@@ -220,6 +222,7 @@ export function Shell({
 
   const Views: Record<string, () => React.JSX.Element> = {
     dashboard: Dashboard, devis: DevisView, factures: FacturesView, paiements: PaiementsView,
+    caisse: CaisseView,
     patients: PatientsView, modeles: ModelesView, options: OptionsView, historique: HistoriqueView,
     parametres: ParametresView, utilisateurs: UtilisateursView,
   };

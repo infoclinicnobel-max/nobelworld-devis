@@ -32,7 +32,9 @@ la liste blanche `TABLES_ECRITURE` de `lib/data.ts`, et l'interface.
 | `patients` | lecture + écriture, **jamais de suppression** (liste unique partagée) |
 | `catalogue_interventions`, `catalogue_correspondances`, `profiles` | **lecture seule** |
 | `rdvs` | lecture + **`INSERT` seul**, par une seule porte, et pour le seul type « Opération ». Ni `UPDATE`, ni `DELETE`. **Hors de `TABLES_ECRITURE`** — voir l'invariant plus bas |
-| toute autre table (`finances`, `taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
+| `finances`, `caisse_arretes` | lecture + écriture depuis le lot 73 (30/08, la caisse) — un mouvement s'**annule** avec sa trace, jamais de `DELETE` ; un arrêté est **immuable** ; `sens`, `lieu` et `devise` obligatoires à l'écriture (le mapper refuse) |
+| `vue_caisse_solde` | lecture (security_invoker : la RLS de `finances` s'applique au lecteur) |
+| toute autre table (`taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
 
 Autres invariants :
 
@@ -250,6 +252,34 @@ Autres invariants :
   réponse dans l'outil. Le balayage **signale, un humain tranche** : avancer un stade
   affirme qu'une opération a eu lieu, fait clinique que l'application ne connaît pas. Lot à
   part, non construit.
+- **La caisse de la coordinatrice (lot 73, 30/08/2026)** : `finances` porte désormais le
+  **sens** (`entree · sortie · change · remise`) et le **lieu** (`caisse · compte`) de
+  chaque mouvement, et le **change** est un mouvement à part entière — UNE ligne, deux
+  devises (`montant`/`devise` sortent, `montant_contrepartie`/`devise_contrepartie`
+  entrent) ; sans lui, une perte au change se dissolvait entre « encaissé 5 000 € » et
+  « payé 180 000 TL ». Le **taux n'est jamais une colonne** : il se calcule à l'affichage.
+  Reprise des 64 lignes le 30/08 par correspondance **explicite** type→sens/lieu
+  (sauvegarde datée `sauvegarde_finances_20260830`, journal dans `notes`, `updated_at`
+  posé à la main — la table n'a **aucun déclencheur**) : entree/compte 44 · entree/caisse
+  13 · sortie/caisse 7, zéro sens vide. Le **solde ne se saisit jamais** :
+  `vue_caisse_solde` le calcule par devise depuis le dernier **arrêté**
+  (`caisse_arretes` = comptage physique, immuable, un arrêté vaut **fin de journée** ; le
+  premier sera le solde d'ouverture, comptage réel de Ceyda — la migration n'en insère
+  aucun) ; l'écart compté−calculé est le seul chiffre d'alerte. **Jamais deux devises dans
+  un même total.** `montant` reste du **texte** : une valeur illisible est signalée et
+  comptée (`lignes_illisibles`), jamais absente d'un total en silence. Un mouvement
+  s'**annule** avec sa trace (`supprimer()` refuse). « En attente » est hors caisse ; les
+  4 « Honoraires chirurgien » **sans statut** ne sont ni payés ni dus — listés à l'écran,
+  arbitrage Veys, jamais devinés. Écran **mobile d'abord** : deux nombres, quatre gestes
+  (« J'ai encaissé · payé · changé · rendu »), trois champs, clavier numérique, **date du
+  mouvement ≠ moment de la saisie** (« maintenant » par défaut, badge « de mémoire » quand
+  elles divergent), **rafale** après chaque enregistrement. Le Dr Azar **Zeynalov est payé
+  en euros**, les autres en livres — lu sur la référence `medecins`, jamais sur un nom.
+  Rapprochement par patiente : encaissé (extras compris) face au facturé vivant, et l'écart
+  avec l'**autre** registre (`nw_paiements`) montré au lieu d'être découvert trois mois
+  après. `lib/caisse.ts` est pur et **miroir** de la vue (46 683,00 EUR vérifiés des deux
+  côtés sur les 64 lignes réelles le 30/08) ; `db/migration-20260830-lot73-caisse.sql` ;
+  recette `scripts/recette-caisse.ts`.
 - **Le devis accepté pose l'opération au calendrier — en `INSERT` seul, par une seule
   porte.** `rdvs` appartient au CRM et **reste hors de `TABLES_ECRITURE`** : cette liste
   commande aussi `supprimer()`, qui n'a de garde particulière que pour `patients`, si bien
@@ -295,6 +325,7 @@ npx tsx scripts/totaux-devis.ts devis.json ref.json   # montants inchangés, dev
 npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les règles de la remontée
 npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
+npx tsx scripts/recette-caisse.ts                     # 49 contrôles : sens/lieu, soldes par devise, arrêtés, gardes d'écriture
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

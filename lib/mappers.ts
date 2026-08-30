@@ -5,7 +5,9 @@
 import { curSymbol, normalizeDate } from './format';
 import { DEFAULT_SETTINGS, type Settings } from './defaults';
 import { mapRole, parseProfilePerms, type AppUser } from './perms';
-import type { DocRecord, HistoEntry, Modele, OptionCat, Paiement, Patient } from './types';
+import type {
+  Arrete, DocRecord, HistoEntry, Medecin, Modele, Mouvement, OptionCat, Paiement, Patient,
+} from './types';
 
 type Row = Record<string, any>;
 
@@ -341,6 +343,139 @@ export function rowToModele(r: Row): Modele {
     actif: r.actif !== false,
     ordre: r.ordre == null ? null : Number(r.ordre),
   };
+}
+
+/* ------------------------------------------------- caisse (lot 73, 30/08) */
+
+/* `finances` est la table du CRM, tout en texte, colonnes camelCase citées
+   ("patientId", "creePar"). Le montant RESTE du texte : la conversion vit dans
+   lib/caisse.ts, et une valeur illisible se signale au lieu de devenir NaN. */
+export function rowToMouvement(r: Row): Mouvement {
+  return {
+    _row: r,
+    id: str(r.id),
+    patientId: str(r.patientId),
+    type: str(r.type),
+    procedure: str(r.procedure),
+    montant: str(r.montant),
+    date: str(r.date),
+    statut: str(r.statut),
+    methode: str(r.methode),
+    creePar: str(r.creePar),
+    devise: str(r.devise),
+    notes: str(r.notes),
+    sens: str(r.sens),
+    lieu: str(r.lieu),
+    montantContrepartie: str(r.montant_contrepartie),
+    deviseContrepartie: str(r.devise_contrepartie),
+    createdAt: r.created_at || undefined,
+    updatedAt: r.updated_at || undefined,
+  };
+}
+
+/* ⚠ Les obligations du lot 73 vivent ICI, dans l'écrivain — pas en base, où
+   `NOT NULL DEFAULT ''` laisse le monolithe insérer sans les nommer :
+   · sens, lieu, devise OBLIGATOIRES — la devise facultative est la dette
+     qu'on vient de payer, la reproduire serait impardonnable ;
+   · montant LISIBLE et date ISO — jamais un texte qui sortira des totaux ;
+   · un change porte sa contrepartie (montant lisible + devise) ; tout autre
+     sens repart avec une contrepartie VIDE ;
+   · updated_at posé À LA MAIN : finances n'a aucun déclencheur. */
+export function mouvementToRow(m: Partial<Mouvement>, auteur: string): Row {
+  const sens = str(m.sens);
+  const lieu = str(m.lieu);
+  const devise = str(m.devise).trim();
+  if (!['entree', 'sortie', 'change', 'remise'].includes(sens)) {
+    throw new Error(`Mouvement refusé : sens « ${sens} » inconnu (entree, sortie, change, remise).`);
+  }
+  if (!['caisse', 'compte'].includes(lieu)) {
+    throw new Error(`Mouvement refusé : lieu « ${lieu} » inconnu (caisse, compte).`);
+  }
+  if (!devise) throw new Error('Mouvement refusé : la devise est obligatoire.');
+  const montant = str(m.montant).trim();
+  if (!/^-?[0-9]+([.,][0-9]+)?$/.test(montant)) {
+    throw new Error(`Mouvement refusé : montant « ${montant} » illisible.`);
+  }
+  const date = normalizeDate(m.date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('Mouvement refusé : la date du mouvement est obligatoire (AAAA-MM-JJ).');
+  }
+  let contrepartie = '';
+  let deviseContrepartie = '';
+  if (sens === 'change') {
+    contrepartie = str(m.montantContrepartie).trim();
+    deviseContrepartie = str(m.deviseContrepartie).trim();
+    if (!/^-?[0-9]+([.,][0-9]+)?$/.test(contrepartie) || !deviseContrepartie) {
+      throw new Error('Change refusé : la contrepartie (montant obtenu + devise) est obligatoire.');
+    }
+    if (deviseContrepartie === devise) {
+      throw new Error('Change refusé : les deux devises sont identiques — un change traverse les devises.');
+    }
+  }
+  return {
+    id: m.id,
+    patientId: str(m.patientId),
+    type: str(m.type),
+    procedure: str(m.procedure),
+    montant,
+    date,
+    statut: str(m.statut) || 'Complété',
+    methode: str(m.methode),
+    creePar: str(m.creePar) || auteur,
+    devise,
+    notes: str(m.notes),
+    sens,
+    lieu,
+    montant_contrepartie: contrepartie,
+    devise_contrepartie: deviseContrepartie,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/* Un arrêté est IMMUABLE : insertion seule, pas d'updated_at. L'écart est
+   recalculé ici — une seule formule, jamais deux. */
+export function rowToArrete(r: Row): Arrete {
+  return {
+    id: str(r.id),
+    date: str(r.date),
+    devise: str(r.devise),
+    montantCompte: num(r.montant_compte),
+    montantCalcule: num(r.montant_calcule),
+    ecart: num(r.ecart),
+    par: str(r.par),
+    notes: str(r.notes),
+    createdAt: r.created_at || undefined,
+  };
+}
+export function arreteToRow(a: Partial<Arrete>): Row {
+  const date = normalizeDate(a.date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Arrêté refusé : la date du comptage est obligatoire.');
+  const devise = str(a.devise).trim();
+  if (!devise) throw new Error('Arrêté refusé : la devise est obligatoire.');
+  const compte = Number(a.montantCompte);
+  const calcule = Number(a.montantCalcule);
+  if (!Number.isFinite(compte) || !Number.isFinite(calcule)) {
+    throw new Error('Arrêté refusé : montant compté et montant calculé doivent être des nombres.');
+  }
+  return {
+    id: a.id,
+    date,
+    devise,
+    montant_compte: Math.round(compte * 100) / 100,
+    montant_calcule: Math.round(calcule * 100) / 100,
+    ecart: Math.round((compte - calcule) * 100) / 100,
+    par: str(a.par),
+    notes: str(a.notes),
+  };
+}
+
+/* ---------------------------------------------- médecins (lecture seule) */
+
+/* Deux colonnes seulement : l'identifiant et le libellé canonique. Sert au
+   geste « J'ai payé » — la règle Zeynalov-en-euros se lit sur l'identifiant,
+   jamais sur un texte (lib/caisse.ts). */
+export function rowToMedecin(r: Row): Medecin {
+  return { id: str(r.id), nomAffiche: str(r.nomAffiche).trim() };
 }
 
 /* ------------------------------------------------- profils (lecture seule) */

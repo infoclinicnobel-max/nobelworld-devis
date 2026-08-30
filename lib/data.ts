@@ -10,9 +10,10 @@
 
 import { supabase } from './supabase/client';
 import {
-  devisToRow, factureToRow, histoToRow, optionToRow, paiementToRow, patientToRow,
-  rowToDevis, rowToFacture, rowToHisto, rowToModele, rowToOption, rowToPaiement,
-  rowToPatient, rowToUser, settingsToValeur, valeurToSettings,
+  arreteToRow, devisToRow, factureToRow, histoToRow, mouvementToRow, optionToRow, paiementToRow,
+  patientToRow, rowToArrete, rowToDevis, rowToFacture, rowToHisto, rowToMedecin, rowToModele,
+  rowToMouvement, rowToOption, rowToPaiement, rowToPatient, rowToUser, settingsToValeur,
+  valeurToSettings,
 } from './mappers';
 import type { AppData, Collection, DocRecord, OptionCat, Paiement, Patient } from './types';
 import type { Settings } from './defaults';
@@ -31,9 +32,12 @@ import {
 } from './agenda';
 import { ROLES_SANS_ACCES } from './perms';
 
-/** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite. */
+/** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite.
+    `finances` et `caisse_arretes` : ouvertes par le lot 73 (30/08/2026) pour la caisse
+    de la coordinatrice — un mouvement s'ANNULE, ne se supprime jamais ; un arrêté est
+    immuable (voir supprimer()). */
 const TABLES_ECRITURE = new Set(['nw_devis', 'nw_factures', 'nw_paiements', 'nw_historique',
-  'nw_options', 'nw_parametres', 'patients']);
+  'nw_options', 'nw_parametres', 'patients', 'finances', 'caisse_arretes']);
 
 function assertEcritureAutorisee(table: string) {
   if (!TABLES_ECRITURE.has(table)) {
@@ -75,7 +79,7 @@ export async function chargerTout(): Promise<AppData> {
   const sb = supabase();
   const [
     param, patients, devis, factures, paiements, options, historique, profiles, catalogue, corresp,
-    descriptions,
+    descriptions, financesR, arretesR, soldesR, medecinsR,
   ] = await Promise.all([
     sb.from('nw_parametres').select('cle,valeur'),
     sb.from('patients').select('*').order('nom', { ascending: true }),
@@ -88,11 +92,23 @@ export async function chargerTout(): Promise<AppData> {
     sb.from('catalogue_interventions').select('*').order('ordre', { ascending: true, nullsFirst: false }),
     sb.from('catalogue_correspondances').select('libelle_libre,catalogue_id,statut'),
     sb.from('nw_catalogue_descriptions').select('catalogue_id,description'),
+    /* Lot 73 — la caisse. `finances` existe depuis toujours : lecture stricte.
+       `caisse_arretes` et `vue_caisse_solde` naissent avec la migration du
+       30/08 : lecture TOLÉRANTE — module dégradé, application vivante. */
+    sb.from('finances').select('*').order('date', { ascending: false }),
+    sb.from('caisse_arretes').select('*').order('date', { ascending: false }),
+    sb.from('vue_caisse_solde').select('*'),
+    /* Chirurgiens (lecture seule) : « à qui » du geste « J'ai payé ». */
+    sb.from('medecins').select('id,nomAffiche').order('nomAffiche', { ascending: true }),
   ]);
 
   const premiereErreur = [param, patients, devis, factures, paiements, options, historique, profiles,
-    catalogue, corresp].find((r) => r.error);
+    catalogue, corresp, financesR].find((r) => r.error);
   if (premiereErreur?.error) throw new Error(premiereErreur.error.message);
+
+  for (const [nom, r] of [['caisse_arretes', arretesR], ['vue_caisse_solde', soldesR], ['medecins', medecinsR]] as const) {
+    if (r.error) console.warn(`[CN][caisse] ${nom} indisponible :`, r.error.message);
+  }
 
   /* Descriptions patient des prestations du catalogue. Volontairement tolérant :
      si la table est absente ou vide, les modèles gardent une description vide —
@@ -127,6 +143,19 @@ export async function chargerTout(): Promise<AppData> {
       catalogueId: c.catalogue_id ? String(c.catalogue_id) : null,
       statut: String(c.statut || ''),
     })),
+    finances: (financesR.data || []).map(rowToMouvement),
+    arretes: arretesR.error ? [] : (arretesR.data || []).map(rowToArrete),
+    soldesCaisse: soldesR.error
+      ? []
+      : (soldesR.data || []).map((s: any) => ({
+        devise: String(s.devise || ''),
+        solde: Number(s.solde || 0),
+        depuisArrete: String(s.depuis_arrete || ''),
+        lignesIllisibles: Number(s.lignes_illisibles || 0),
+      })),
+    medecins: medecinsR.error
+      ? []
+      : (medecinsR.data || []).map(rowToMedecin).filter((m) => m.id && m.nomAffiche),
   };
 }
 
@@ -151,6 +180,8 @@ const TABLE_OF: Record<Collection, string> = {
   paiements: 'nw_paiements',
   options: 'nw_options',
   historique: 'nw_historique',
+  finances: 'finances',
+  arretes: 'caisse_arretes',
 };
 
 const nouvelId = (p: string) =>
@@ -188,6 +219,14 @@ export async function enregistrer(
     case 'historique':
       row = histoToRow(record);
       break;
+    case 'finances':
+      row = mouvementToRow(record, auteur);
+      if (!row.id) row.id = nouvelId('mvt');
+      break;
+    case 'arretes':
+      row = arreteToRow(record);
+      if (!row.id) row.id = nouvelId('arr');
+      break;
   }
 
   const { data, error } = await sb.from(table).upsert(row!, { onConflict: 'id' }).select().single();
@@ -200,6 +239,8 @@ export async function enregistrer(
     case 'paiements': return rowToPaiement(data);
     case 'options': return rowToOption(data);
     case 'historique': return rowToHisto(data);
+    case 'finances': return rowToMouvement(data);
+    case 'arretes': return rowToArrete(data);
   }
 }
 
@@ -211,6 +252,16 @@ export async function supprimer(collection: Collection, id: string): Promise<voi
     throw new Error(
       "Suppression impossible : la fiche patient est partagée avec le CRM Clinic Nobel. Signalez le doublon à l'administrateur.",
     );
+  }
+  if (collection === 'finances') {
+    /* Lot 73 : un mouvement d'argent ne disparaît pas — il s'annule avec sa
+       trace (statut « Annulé » + note), même règle que les factures. */
+    throw new Error("Suppression impossible : un mouvement de caisse s'annule (avec sa trace), il ne se supprime pas.");
+  }
+  if (collection === 'arretes') {
+    /* Un arrêté est un comptage physique daté : immuable. Un arrêté faux se
+       corrige par un NOUVEL arrêté, jamais en effaçant l'ancien. */
+    throw new Error('Suppression impossible : un arrêté de caisse est immuable — refaites un comptage.');
   }
   const { error } = await supabase().from(table).delete().eq('id', id);
   if (error) throw new Error(error.message);

@@ -152,6 +152,13 @@ export const PERMS: { g: string; items: [string, string][] }[] = [
     ],
   },
   {
+    g: 'Caisse (lot 73)',
+    items: [
+      ['caisseView', 'Voir la caisse de la coordinatrice'],
+      ['caisseEdit', 'Saisir un mouvement de caisse ou un arrêté'],
+    ],
+  },
+  {
     g: 'Patients',
     items: [
       ['patientsView', 'Voir le module Patients'],
@@ -197,6 +204,7 @@ const VIEW_PERM: Record<string, string> = {
   dashboard: 'dashboardView', devis: 'devisView', factures: 'facturesView',
   patients: 'patientsView', modeles: 'modelesView', options: 'optionsView',
   utilisateurs: 'usersManage', historique: 'histoView', parametres: 'paramView',
+  caisse: 'caisseView',
 };
 
 export function canView(user: Partial<AppUser> | null | undefined, viewKey: string): boolean {

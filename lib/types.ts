@@ -161,6 +161,70 @@ export interface AppData {
   utilisateurs: AppUser[];
   /** Correspondances anciens libellés ↔ catalogue (lecture seule, sert aux alertes). */
   correspondances: { libelle: string; catalogueId: string | null; statut: string }[];
+  /* ---- lot 73 (caisse) ---- */
+  /** Les mouvements de `finances` — le registre partagé avec le CRM. */
+  finances: Mouvement[];
+  /** Les arrêtés de caisse (comptages physiques). Vide tant que la table est absente : module dégradé, app vivante. */
+  arretes: Arrete[];
+  /** vue_caisse_solde — le solde qui fait foi. Vide si la vue est absente : repli sur le calcul local, dit à l'écran. */
+  soldesCaisse: SoldeVue[];
+  /** Chirurgiens du CRM (lecture seule) : « à qui » du geste « J'ai payé ». Vide si illisible — saisie libre. */
+  medecins: Medecin[];
 }
 
-export type Collection = 'patients' | 'devis' | 'factures' | 'paiements' | 'options' | 'historique';
+/* ---- lot 73 : la caisse de la coordinatrice (30/08/2026) ---- */
+
+/** Une ligne de `finances` — la table du CRM, TOUT EN TEXTE, y compris `montant` :
+    la conversion vit dans lib/caisse.ts (montantNumerique), jamais dans le type.
+    `sens`/`lieu` vides = ligne écrite par un autre chemin (le monolithe) — « à
+    classer », signalée, jamais comptée. */
+export interface Mouvement {
+  _row?: Record<string, unknown>;
+  id?: string;
+  patientId: string;
+  type: string;
+  procedure: string;
+  /** TEXTE, comme la colonne. Un montant illisible se signale, ne se somme jamais. */
+  montant: string;
+  date: string;
+  statut: string;
+  methode: string;
+  creePar: string;
+  devise: string;
+  notes: string;
+  /** entree · sortie · change · remise — ou '' (à classer). */
+  sens: string;
+  /** caisse · compte — ou '' . */
+  lieu: string;
+  /** Rempli UNIQUEMENT pour un change : ce qui entre, dans sa devise. */
+  montantContrepartie: string;
+  deviseContrepartie: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Un arrêté de caisse : le COMPTAGE PHYSIQUE, jamais le solde. Immuable —
+    ni update ni delete ; l'écart compté−calculé est le seul chiffre d'alerte. */
+export interface Arrete {
+  id?: string;
+  date: string;
+  devise: string;
+  montantCompte: number;
+  montantCalcule: number;
+  ecart: number;
+  par: string;
+  notes: string;
+  createdAt?: string;
+}
+
+/** Une ligne de vue_caisse_solde — le solde qui fait foi, calculé en base. */
+export interface SoldeVue { devise: string; solde: number; depuisArrete: string; lignesIllisibles: number }
+
+/** Chirurgien du CRM = ligne de la table `medecins` (lecture seule). */
+export interface Medecin {
+  id: string;
+  nomAffiche: string;
+}
+
+export type Collection = 'patients' | 'devis' | 'factures' | 'paiements' | 'options' | 'historique'
+  | 'finances' | 'arretes';

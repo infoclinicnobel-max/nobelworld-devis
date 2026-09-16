@@ -18,6 +18,8 @@ Variables d'environnement (les seules ; **aucune clé ne doit être écrite dans
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase `clinic-nobel-crm-prod` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé publiable (les droits réels viennent des règles RLS) |
+| `INTERNAL_PAYMENT_LINK_SECRET` | **Serveur seulement** (jamais `NEXT_PUBLIC_`). Secret partagé avec `clinicnobel-next`, identique des deux côtés : il authentifie l'appel de `app/api/paysera/lien-devis` vers l'endpoint interne du site. Veys le pose lui-même dans Vercel ; il ne se recopie nulle part |
+| `CLINICNOBEL_SITE_URL` | Facultatif — base de l'endpoint du site (défaut `https://www.clinicnobel.com`) |
 
 ## Base de données — règles non négociables
 
@@ -34,6 +36,7 @@ la liste blanche `TABLES_ECRITURE` de `lib/data.ts`, et l'interface.
 | `rdvs` | lecture + **`INSERT` seul**, par une seule porte, et pour le seul type « Opération ». Ni `UPDATE`, ni `DELETE`. **Hors de `TABLES_ECRITURE`** — voir l'invariant plus bas |
 | `finances`, `caisse_arretes` | lecture + écriture depuis le lot 73 (30/08, la caisse) — un mouvement s'**annule** avec sa trace, jamais de `DELETE` ; un arrêté est **immuable** ; `sens`, `lieu` et `devise` obligatoires à l'écriture (le mapper refuse) |
 | `vue_caisse_solde` | lecture (security_invoker : la RLS de `finances` s'applique au lecteur) |
+| `nw_liens_paiement` | lecture depuis l'écran du devis ; **écriture par la seule route serveur** `app/api/paysera/lien-devis` (INSERT, jamais de suppression). Hors de `TABLES_ECRITURE` : aucun chemin générique ne la nomme |
 | toute autre table (`taches`, `devis`, `devis_lignes`, `ia_*`…) | **interdite** |
 
 Autres invariants :
@@ -297,6 +300,39 @@ Autres invariants :
   raccourci « rien à écrire » : une fiche déjà complète produit un `aEcrire` vide, et c'est
   exactement le cas qui a motivé le lot. `heure` (`'10:00'`) est une **convention** — aucune
   source n'en porte — d'où `creePar = 'nobelworld'`, qui permet de retrouver ces lignes.
+- **Le lien de paiement Paysera se demande au site, jamais à Paysera (16/09/2026).** Décidé
+  avec Veys : toute la mécanique Paysera (identifiants, signature, API) vit dans
+  `clinicnobel-next`, qui expose `POST /api/paysera/lien-devis` protégé par un secret
+  partagé. Ce dépôt n'a **aucun identifiant Paysera** et un seul appel réseau sortant, depuis
+  sa route serveur `app/api/paysera/lien-devis` — le secret est lu dans l'environnement
+  serveur, jamais renvoyé, jamais journalisé, et sa présence est vérifiée **avant** tout
+  appel. Le **montant vient du devis** : l'acompte saisi, ou le solde (total après remise −
+  déjà encaissé, par le numéro du devis **et** par les factures nées du devis) — recalculé
+  sur le serveur depuis la ligne en base, le navigateur n'envoie que l'identifiant du devis,
+  le type et la langue de la page. Le bouton se propose sur un devis **envoyé** ou
+  **accepté** seulement (`STATUTS_LIEN_POSSIBLE`, `lib/lienPaiement.ts`) : un brouillon
+  n'est pas parti, un classé est figé. Seul le rôle **admin** (`pdg`, Veys — l'unique
+  profil `admin` en base au 16/09) porte la permission `paiementLienPaysera`, vérifiée par
+  le même `can()` à l'écran et dans la route ; la règle d'accès (profil absent, rôle
+  interdit, compte inactif) est descendue dans `lib/acces.ts` pour être partagée et non
+  recopiée. **Le site n'a aucune mémoire du lien** (chaque appel en crée un neuf, valable
+  7 jours) : la mémoire est ici, `nw_liens_paiement` (migration
+  `db/migration-20260916-lien-paiement-paysera.sql`, **appliquée le 16/09/2026** sur
+  `jvcybcpqraoxbkemmpax`, table neuve et vide, RLS comme `nw_historique`) ; un lien vivant
+  pour le même type et le **même montant** est réutilisé, un lien neuf ne se redemande que
+  sur « Nouveau lien » (demande explicite, confirmée). Lecture **tolérante** : table absente
+  = lien généré quand même, dit « non conservé ». **Le statut du paiement se lit dans
+  `nw_paiements`** filtré sur `ref_num` = numéro du devis et mode « Paysera » (le site y
+  écrit sur webhook confirmé : type acompte/paiement, `note` = référence Paysera) — aucun
+  champ « payé » sur `nw_devis`, convention existante conservée ; « Actualiser » relit
+  paiements et liens, le webhook arrivant sans que l'application le sache. Un acompte
+  Paysera déjà encaissé éteint la proposition « acompte » (avec sa date) ; un devis
+  entièrement réglé éteint le solde ; hors bornes du contrat (1 à 50 000 €) éteint aussi —
+  chaque extinction porte sa raison, rien n'est caché. Rien ne part automatiquement à la
+  patiente : Veys copie le lien et l'envoie lui-même. Trace `nw_historique` à chaque lien
+  créé (type, montant, devis, référence, expiration). Le panneau vit **hors de
+  `#print-area`** : il ne s'imprime jamais avec le document. Recette
+  `scripts/recette-lien-paiement.ts` (65 contrôles).
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.
@@ -326,6 +362,7 @@ npx tsx scripts/recette-fiche-champs.ts               # 49 contrôles sur les r�
 npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les trois cas de l'agenda
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
 npx tsx scripts/recette-caisse.ts                     # 49 contrôles : sens/lieu, soldes par devise, arrêtés, gardes d'écriture
+npx tsx scripts/recette-lien-paiement.ts              # 65 contrôles : montant depuis le devis, statuts, mémoire du lien, statut lu dans nw_paiements, permission
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

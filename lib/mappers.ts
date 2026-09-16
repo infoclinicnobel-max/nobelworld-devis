@@ -6,7 +6,7 @@ import { curSymbol, normalizeDate } from './format';
 import { DEFAULT_SETTINGS, type Settings } from './defaults';
 import { mapRole, parseProfilePerms, type AppUser } from './perms';
 import type {
-  Arrete, DocRecord, HistoEntry, Medecin, Modele, Mouvement, OptionCat, Paiement, Patient,
+  Arrete, DocRecord, HistoEntry, LienPaiement, Medecin, Modele, Mouvement, OptionCat, Paiement, Patient,
 } from './types';
 
 type Row = Record<string, any>;
@@ -277,6 +277,47 @@ export function paiementToRow(p: Partial<Paiement>): Row {
     devise: garder('devise', deviseCol(p.devise), (v) => curSymbol(v) === curSymbol(p.devise)),
     note: txt('note', p.note),
     updated_at: new Date().toISOString(),
+  };
+}
+
+/* ------------------------------------------- liens de paiement Paysera */
+
+export function rowToLienPaiement(r: Row): LienPaiement {
+  return {
+    id: str(r.id),
+    devisId: str(r.devis_id),
+    devisNumero: str(r.devis_numero),
+    type: str(r.type),
+    montant: num(r.montant),
+    devise: str(r.devise) || 'EUR',
+    reference: str(r.reference),
+    paymentUrl: str(r.payment_url),
+    orderId: str(r.order_id),
+    linkId: str(r.link_id),
+    isTest: r.is_test === true,
+    langue: str(r.langue) || 'fr',
+    expiresAt: str(r.expires_at),
+    creePar: str(r.cree_par),
+    createdAt: str(r.created_at),
+  };
+}
+
+export function lienPaiementToRow(l: Omit<LienPaiement, 'createdAt'>): Row {
+  return {
+    id: l.id,
+    devis_id: l.devisId,
+    devis_numero: l.devisNumero,
+    type: l.type,
+    montant: num(l.montant),
+    devise: l.devise || 'EUR',
+    reference: l.reference,
+    payment_url: l.paymentUrl,
+    order_id: l.orderId,
+    link_id: l.linkId,
+    is_test: l.isTest === true,
+    langue: l.langue || 'fr',
+    expires_at: l.expiresAt || null,
+    cree_par: l.creePar,
   };
 }
 

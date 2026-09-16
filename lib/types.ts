@@ -226,5 +226,30 @@ export interface Medecin {
   nomAffiche: string;
 }
 
+/* ---- lien de paiement Paysera (16/09/2026) ----
+   Une ligne de `nw_liens_paiement` : ce que le site clinicnobel.com a renvoyé,
+   conservé ICI parce que le site n'en garde aucune mémoire (chaque appel y crée
+   un lien neuf, valable 7 jours). Écrite par la route serveur seulement. */
+export interface LienPaiement {
+  id: string;
+  devisId: string;
+  devisNumero: string;
+  /** acompte · paiement */
+  type: string;
+  montant: number;
+  devise: string;
+  /** Référence Paysera (« DEVIS-D-2026-000123-A-… ») : c'est elle que le site pose en `note` du paiement. */
+  reference: string;
+  paymentUrl: string;
+  orderId: string;
+  linkId: string;
+  isTest: boolean;
+  langue: string;
+  /** ISO 8601 — après quoi le lien est mort et un nouveau doit être demandé. */
+  expiresAt: string;
+  creePar: string;
+  createdAt: string;
+}
+
 export type Collection = 'patients' | 'devis' | 'factures' | 'paiements' | 'options' | 'historique'
   | 'finances' | 'arretes';

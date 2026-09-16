@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { Drawer } from './ui';
 import { Ico } from './icons';
 import { DevisDoc } from './DevisDoc';
+import { PanneauLienPaiement } from './LienPaiement';
 import { useApp } from './AppContext';
 import { pdfFileName } from '@/lib/format';
 import { paidFor } from '@/lib/calc';
@@ -112,6 +113,8 @@ export function DocumentView({
         </>
       }
     >
+      {/* Hors de #print-area : le panneau ne s'imprime jamais avec le document. */}
+      {!isF && <PanneauLienPaiement devis={rec} />}
       <div id="print-area">
         <DevisDoc record={rec} settings={s} patient={p} type={type} paid={paid} editable={false} />
       </div>

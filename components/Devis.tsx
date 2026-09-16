@@ -21,6 +21,7 @@ import {
   validiteDepassee,
 } from '@/lib/calc';
 import { nettoyerActes } from '@/lib/catalogue';
+import { paiementsPaysera } from '@/lib/lienPaiement';
 import type { DocRecord, Modele } from '@/lib/types';
 import { remonterVersFiche, type ResultatRemontee } from '@/lib/data';
 import type { PlanAgenda } from '@/lib/agenda';
@@ -170,6 +171,10 @@ export function DevisView() {
                           dit ce qu'il sait, il ne reclasse jamais. */}
                       {validiteDepassee(d, aujourdhui) && (
                         <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>validité dépassée</div>
+                      )}
+                      {/* Lu dans nw_paiements (ref_num = numéro du devis), jamais sur le devis. */}
+                      {paiementsPaysera(data.paiements, d.numero).length > 0 && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>payé via Paysera</div>
                       )}
                     </td>
                     <td className="tnum t-strong" style={{ textAlign: 'right' }}>{money(totalOf(d), cur)}</td>

@@ -30,7 +30,10 @@ import { todayISO } from './format';
 import {
   planifierRendezVous, TYPE_OPERATION, type LigneAgenda, type PlanAgenda,
 } from './agenda';
-import { ROLES_SANS_ACCES } from './perms';
+import { AccesRefuseError, profilAutorise } from './acces';
+
+/* Ré-exporté : App.tsx et Login le connaissent sous ce nom depuis toujours. */
+export { AccesRefuseError };
 
 /** Tables du CRM ouvertes en écriture à Nobel World. Toute autre table est interdite.
     `finances` et `caisse_arretes` : ouvertes par le lot 73 (30/08/2026) pour la caisse
@@ -45,10 +48,10 @@ function assertEcritureAutorisee(table: string) {
   }
 }
 
-export class AccesRefuseError extends Error {}
-
 /* ------------------------------------------------------------------ profil */
 
+/* La règle d'accès (profil absent, rôle interdit, compte désactivé) vit dans
+   lib/acces.ts : la route serveur du lien Paysera applique la même. */
 export async function chargerProfil(authUserId: string): Promise<AppUser> {
   const { data, error } = await supabase()
     .from('profiles')
@@ -56,21 +59,7 @@ export async function chargerProfil(authUserId: string): Promise<AppUser> {
     .eq('auth_user_id', authUserId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) {
-    throw new AccesRefuseError(
-      "Aucun profil n'est associé à ce compte dans Clinic Nobel. Demandez à l'administrateur de créer votre fiche.",
-    );
-  }
-  const u = rowToUser(data);
-  if (ROLES_SANS_ACCES.includes(u.roleBase.toLowerCase())) {
-    throw new AccesRefuseError(
-      `Le rôle « ${u.roleBase} » n'a pas accès à Nobel World. Les règles d'accès de la base réservent l'application aux autres rôles.`,
-    );
-  }
-  if (String(u.statut).toLowerCase() === 'inactif') {
-    throw new AccesRefuseError("Compte désactivé. Contactez l'administrateur.");
-  }
-  return u;
+  return profilAutorise(data);
 }
 
 /* ------------------------------------------------------------- chargement */

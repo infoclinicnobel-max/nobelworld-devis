@@ -73,6 +73,14 @@ export const ROLES: Record<string, { label: string; can: PermMap & { all?: boole
   },
 };
 
+/* Le lien de paiement Paysera (16/09/2026) : une permission à part, portée
+   par AUCUN préréglage sauf « PDG / Administrateur » (`all`). Aujourd'hui un
+   seul profil est `admin` en base — Veys. Le CRM ne produit pas cette clé
+   dans sa forme { module: {view,add,…} } : elle ne peut venir que du rôle,
+   ou d'une forme plate posée explicitement. L'écran ET la route serveur la
+   vérifient avec le même `can()`. */
+export const PERM_LIEN_PAIEMENT = 'paiementLienPaysera';
+
 export function can(user: Partial<AppUser> | null | undefined, perm: PermKey): boolean {
   if (!user) return false;
   if (user.perms && Object.prototype.hasOwnProperty.call(user.perms, perm)) return !!user.perms[perm];
@@ -149,6 +157,7 @@ export const PERMS: { g: string; items: [string, string][] }[] = [
     items: [
       ['paymentView', 'Voir les paiements, acomptes et soldes'],
       ['paymentEdit', 'Ajouter / modifier / supprimer un paiement'],
+      [PERM_LIEN_PAIEMENT, 'Générer un lien de paiement Paysera depuis un devis (via le site clinicnobel.com)'],
     ],
   },
   {

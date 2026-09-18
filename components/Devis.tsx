@@ -5,6 +5,7 @@ import {
   Confirm, Empty, Field, Input, Modal, Select, StatusBadge, Textarea, useNavOverlay,
 } from './ui';
 import { Ico } from './icons';
+import { ListeAdaptative, Montant } from './ListeAdaptative';
 import { DevisDoc, type DocHandlers } from './DevisDoc';
 import { SelecteurModele } from './SelecteurModele';
 import { DocumentView } from './DocumentView';
@@ -154,99 +155,119 @@ export function DevisView() {
           </button>
         )}
       </div>
-      <div className="card">
-        {list.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>N°</th><th>Patient</th><th>Date</th><th>Intervention</th><th>Statut</th>
-                <th className="r" style={{ textAlign: 'right' }}>Total</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((d) => {
-                const p = data.patients.find((x) => x.id === d.patientId);
-                const mine = estDeMoi(user, d.createdBy);
-                const canEdit =
-                  can(user, 'devisEditAll') || can(user, 'all') || (can(user, 'devisEditOwn') && mine);
-                return (
-                  <tr key={d.id} className="clickable" onClick={() => setViewDoc(d)}>
-                    <td className="t-strong">{d.numero}</td>
-                    <td>{patientName(p)}</td>
-                    <td className="muted">{fmtDate(d.date)}</td>
-                    <td className="muted">{d.dateIntervention ? fmtDate(d.dateIntervention) : '—'}</td>
-                    <td>
-                      <StatusBadge s={d.statut} doc="devis" />
-                      {/* Calculé à l'affichage, statut stocké intact : l'écran
-                          dit ce qu'il sait, il ne reclasse jamais. */}
-                      {validiteDepassee(d, aujourdhui) && (
-                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>validité dépassée</div>
-                      )}
-                      {/* Lu dans nw_paiements (ref_num = numéro du devis), jamais sur le devis. */}
-                      {paiementsPaysera(data.paiements, d.numero).length > 0 && (
-                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>payé via Paysera</div>
-                      )}
-                    </td>
-                    <td className="tnum t-strong" style={{ textAlign: 'right' }}>{money(totalOf(d), cur)}</td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {canEdit && d.statut === 'envoye' && (
-                        <>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            title="Marquer refusé — la patiente a dit non"
-                            onClick={() => classer(d, 'refuse', 'marqué refusé')}
-                          >
-                            <Ico.x size={15} />
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            title="Classer expiré — sans réponse, classé sans suite"
-                            onClick={() => classer(d, 'expire', 'classé expiré')}
-                          >
-                            <Ico.hourglass size={15} />
-                          </button>
-                        </>
-                      )}
-                      {canEdit && devisEstClasse(d.statut) && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Réactiver — retour à « Envoyé »"
-                          onClick={() => classer(d, 'envoye', 'réactivé')}
-                        >
-                          <Ico.check size={15} />
-                        </button>
-                      )}
-                      {canEdit && (
-                        <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(d)}>
-                          <Ico.edit size={15} />
-                        </button>
-                      )}
-                      {can(user, 'devisDuplicate') || can(user, 'all') ? (
-                        <button className="btn btn-ghost btn-sm" title="Dupliquer" onClick={() => duplicate(d)}>
-                          <Ico.copy size={15} />
-                        </button>
-                      ) : null}
-                      {(can(user, 'factureCreate') || can(user, 'all')) && (
-                        <button className="btn btn-ghost btn-sm" title="→ Facture" onClick={() => convert(d)}>
-                          <Ico.invoice size={15} />
-                        </button>
-                      )}
-                      {can(user, 'all') && (
-                        <button
-                          className="btn btn-ghost btn-sm btn-danger"
-                          title="Supprimer"
-                          onClick={() => setDel(d)}
-                        >
-                          <Ico.trash size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
+      {/* Tableau au bureau, CARTES sous 640 px — même composant que les
+          trois autres listes. Toute l'information du tableau reste dans la
+          carte, mention « validité dépassée » et « payé via Paysera »
+          comprises. */}
+      <ListeAdaptative
+        colonnes={[
+          { titre: 'N°' }, { titre: 'Patient' }, { titre: 'Date' }, { titre: 'Intervention' }, { titre: 'Statut' },
+          { titre: 'Total', className: 'r', style: { textAlign: 'right' } }, {},
+        ]}
+        lignes={list.map((d) => {
+          const p = data.patients.find((x) => x.id === d.patientId);
+          const mine = estDeMoi(user, d.createdBy);
+          const canEdit =
+            can(user, 'devisEditAll') || can(user, 'all') || (can(user, 'devisEditOwn') && mine);
+          const depassee = validiteDepassee(d, aujourdhui);
+          const paysera = paiementsPaysera(data.paiements, d.numero).length > 0;
+          /* Calculé à l'affichage, statut stocké intact : l'écran dit ce
+             qu'il sait, il ne reclasse jamais. « payé via Paysera » se lit
+             dans nw_paiements (ref_num = numéro du devis), jamais sur le
+             devis lui-même. */
+          const statut = (
+            <>
+              <StatusBadge s={d.statut} doc="devis" />
+              {depassee && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>validité dépassée</div>
+              )}
+              {paysera && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>payé via Paysera</div>
+              )}
+            </>
+          );
+          const total = <Montant className="tnum t-strong">{money(totalOf(d), cur)}</Montant>;
+          const actions = (
+            <>
+              {canEdit && d.statut === 'envoye' && (
+                <>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    title="Marquer refusé — la patiente a dit non"
+                    onClick={() => classer(d, 'refuse', 'marqué refusé')}
+                  >
+                    <Ico.x size={15} />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    title="Classer expiré — sans réponse, classé sans suite"
+                    onClick={() => classer(d, 'expire', 'classé expiré')}
+                  >
+                    <Ico.hourglass size={15} />
+                  </button>
+                </>
+              )}
+              {canEdit && devisEstClasse(d.statut) && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  title="Réactiver — retour à « Envoyé »"
+                  onClick={() => classer(d, 'envoye', 'réactivé')}
+                >
+                  <Ico.check size={15} />
+                </button>
+              )}
+              {canEdit && (
+                <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(d)}>
+                  <Ico.edit size={15} />
+                </button>
+              )}
+              {can(user, 'devisDuplicate') || can(user, 'all') ? (
+                <button className="btn btn-ghost btn-sm" title="Dupliquer" onClick={() => duplicate(d)}>
+                  <Ico.copy size={15} />
+                </button>
+              ) : null}
+              {(can(user, 'factureCreate') || can(user, 'all')) && (
+                <button className="btn btn-ghost btn-sm" title="→ Facture" onClick={() => convert(d)}>
+                  <Ico.invoice size={15} />
+                </button>
+              )}
+              {can(user, 'all') && (
+                <button
+                  className="btn btn-ghost btn-sm btn-danger"
+                  title="Supprimer"
+                  onClick={() => setDel(d)}
+                >
+                  <Ico.trash size={15} />
+                </button>
+              )}
+            </>
+          );
+          return {
+            cle: String(d.id || d.numero),
+            onClick: () => setViewDoc(d),
+            cellules: [
+              { contenu: d.numero, className: 't-strong' },
+              { contenu: patientName(p) },
+              { contenu: fmtDate(d.date), className: 'muted' },
+              { contenu: d.dateIntervention ? fmtDate(d.dateIntervention) : '—', className: 'muted' },
+              { contenu: statut },
+              { contenu: total, className: 'tnum t-strong', style: { textAlign: 'right' } },
+              { contenu: actions, stop: true, style: { textAlign: 'right', whiteSpace: 'nowrap' } },
+            ],
+            carte: {
+              titre: d.numero,
+              sousTitre: patientName(p),
+              date: fmtDate(d.date),
+              statut,
+              montant: total,
+              details: [
+                { libelle: 'Intervention', valeur: d.dateIntervention ? fmtDate(d.dateIntervention) : '—' },
+              ],
+            },
+            actions,
+          };
+        })}
+        vide={(
           <Empty
             icon={Ico.doc}
             title="Aucun devis"
@@ -260,7 +281,7 @@ export function DevisView() {
             }
           />
         )}
-      </div>
+      />
       {editor && (
         <DevisEditor
           devis={editor}

@@ -384,6 +384,37 @@ Autres invariants :
   `index.html` ne vaut plus pour le bloc bancaire de D-2026-000011 — ce devis n'a aucune
   coordonnée photographiée, il prend donc les cinq lignes. C'est l'objet même du lot ; le
   reste du document est inchangé.
+- **Sur téléphone, une ligne de liste est une CARTE, pas une rangée de tableau (18/09/2026).**
+  Constaté par Veys sur la liste des Factures, puis mesuré au banc à 360 px : « F-2026-000026 »
+  rendu sur **trois** lignes (F- / 2026- / 000026), « / 7 600 € » sur deux avec le « € » seul
+  en bas, « Acompte reçu » sur trois, et un document large de **644 px dans une fenêtre de
+  360** — la page défilait latéralement et passait sous le menu. Réduire la police, les marges,
+  ou masquer des colonnes ne répare rien : un tableau de six colonnes reste un tableau de six
+  colonnes. Sous **640 px**, chaque ligne devient donc une carte — numéro et patiente, date et
+  statut, payé / total, actions — et **toute** l'information du tableau y reste : la note d'un
+  paiement, tronquée à 170 px avec des points de suite dans le tableau, s'y affiche en entier.
+  Au-dessus du seuil, le tableau est **inchangé** : `ListeAdaptative` recopie les cellules
+  qu'on lui donne, classes et styles compris — vérifié au pixel près (Factures, Paiements et
+  Patients : 0 pixel de différence à 1280 px). Le seuil vit dans la feuille de style, jamais
+  dans une mesure JavaScript : rien ne clignote au chargement ni à la rotation.
+- **Les garanties du mode carte sont tenues par la CSS, et mesurées** — 104 contrôles sur
+  4 listes × 360/390/430 px, plus le bureau : un numéro de document **insécable** (22 px de
+  haut, une seule ligne) ; un montant **insécable** avec son symbole (`.montant`, posé sur le
+  conteneur plutôt qu'en réécrivant `money()`, qui sert aussi au PDF) ; une pastille de statut
+  sur une ligne ; **zéro** défilement horizontal (largeur du document == largeur de la fenêtre
+  aux trois largeurs) ; **44 px** minimum sur chaque bouton, barre du haut et menu latéral
+  compris ; corps de liste à **14 px**. La barre du haut débordait elle aussi (pastille de
+  synchronisation et bouton de rafraîchissement à 478 px pour 360 de fenêtre) : elle passe sur
+  deux rangées, la recherche prenant la seconde, et la pastille garde son point — donc son
+  état — en perdant son libellé.
+  ⚠ Un **nom** n'est pas un numéro : `titreInsecable: false` sur la liste Patients. L'imposer
+  sur une ligne ferait déborder « Marie-Alexandrine de Villeneuve-Castellane-Montmorency » de
+  sa carte, donc ramènerait le défilement qu'on vient de supprimer. Un nom se replie, un numéro
+  jamais.
+  ⚠ Le seul changement visible au bureau est sur la liste **Devis** : son total « 12 400 € » se
+  coupait **déjà** avant le « € » à 1280 px (capture à l'appui). La règle « un montant ne se
+  sépare jamais de son symbole » le répare aussi là — 0,9 % des pixels de la liste, aucune
+  colonne masquée, aucun montant modifié.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

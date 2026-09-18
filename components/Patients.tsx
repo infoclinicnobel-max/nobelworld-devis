@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Confirm, Drawer, Empty, Field, Input, Textarea, useDirtyGuard } from './ui';
 import { Ico } from './icons';
+import { ListeAdaptative } from './ListeAdaptative';
 import { useApp } from './AppContext';
 import { can, estDeMoi } from '@/lib/perms';
 import { patientName } from '@/lib/calc';
@@ -48,41 +49,56 @@ export function PatientsView() {
           </button>
         )}
       </div>
-      <div className="card">
-        {list.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Patient</th><th>Téléphone</th><th>Pays</th><th>Email</th><th>Devis</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((p) => {
-                const nd = data.devis.filter((d) => d.patientId === p.id).length;
-                return (
-                  <tr key={p.id} className="clickable" onClick={() => setEdit(p)}>
-                    <td className="t-strong">{patientName(p)}</td>
-                    <td className="muted">{p.telephone || '—'}</td>
-                    <td className="muted">{p.pays || '—'}</td>
-                    <td className="muted">{p.email || '—'}</td>
-                    <td><span className="chip">{nd}</span></td>
-                    <td style={{ textAlign: 'right' }}>
-                      {can(user, 'all') && (
-                        <button
-                          className="btn btn-ghost btn-sm btn-danger"
-                          title="Signaler un doublon"
-                          onClick={(e) => { e.stopPropagation(); setDel(p); }}
-                        >
-                          <Ico.trash size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
+      {/* Tableau au bureau, CARTES sous 640 px — même composant que les
+          listes Factures, Devis et Paiements. */}
+      <ListeAdaptative
+        colonnes={[
+          { titre: 'Patient' }, { titre: 'Téléphone' }, { titre: 'Pays' }, { titre: 'Email' }, { titre: 'Devis' }, {},
+        ]}
+        lignes={list.map((p) => {
+          const nd = data.devis.filter((d) => d.patientId === p.id).length;
+          const compte = <span className="chip">{nd}</span>;
+          const actions = can(user, 'all') ? (
+            <button
+              className="btn btn-ghost btn-sm btn-danger"
+              title="Signaler un doublon"
+              onClick={(e) => { e.stopPropagation(); setDel(p); }}
+            >
+              <Ico.trash size={15} />
+            </button>
+          ) : undefined;
+          return {
+            cle: p.id,
+            onClick: () => setEdit(p),
+            cellules: [
+              { contenu: patientName(p), className: 't-strong' },
+              { contenu: p.telephone || '—', className: 'muted' },
+              { contenu: p.pays || '—', className: 'muted' },
+              { contenu: p.email || '—', className: 'muted' },
+              { contenu: compte },
+              { contenu: actions, style: { textAlign: 'right' as const } },
+            ],
+            carte: {
+              /* Une fiche patiente n'a pas de numéro : le nom tient ce rôle.
+                 Il se REPLIE, lui — un nom long imposé sur une ligne
+                 déborderait de la carte et ramènerait le défilement
+                 horizontal. Voir ListeAdaptative. */
+              titre: patientName(p),
+              titreInsecable: false,
+              sousTitre: p.telephone || '—',
+              /* Pays, email et nombre de devis passent en DÉTAILS, avec leur
+                 libellé : sur une carte, un « 1 » ou un « France » seuls
+                 perdent le sens que l'en-tête de colonne leur donnait. */
+              details: [
+                { libelle: 'Pays', valeur: p.pays || '—' },
+                { libelle: 'Email', valeur: p.email || '—' },
+                { libelle: 'Devis', valeur: compte },
+              ],
+            },
+            actions,
+          };
+        })}
+        vide={(
           <Empty
             icon={Ico.patient}
             title="Aucun patient"
@@ -94,7 +110,7 @@ export function PatientsView() {
             }
           />
         )}
-      </div>
+      />
       {edit && (
         <PatientForm
           patient={edit}

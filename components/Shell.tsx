@@ -51,7 +51,9 @@ function SyncPill({ state, lastSync }: { state: SyncState; lastSync: number }) {
       title={lastSync ? 'Dernière synchronisation : ' + fmtClock(lastSync) : 'Aucune synchronisation encore'}
     >
       <span className="syncdot" style={{ background: col }} />
-      {lbl}
+      {/* Le libellé porte une classe pour pouvoir tomber sous 640 px, où la
+          barre n'a pas la place : le POINT et l'infobulle, eux, restent. */}
+      <span className="syncsl">{lbl}</span>
       {state === 'ok' && lastSync ? <span className="syncts"> · {fmtClock(lastSync)}</span> : null}
     </span>
   );

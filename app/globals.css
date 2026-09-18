@@ -459,3 +459,88 @@ input.ed[type=date]{font:inherit}
 .uav.lg{width:64px;height:64px;font-size:20px}
 .permrow{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px;color:var(--ink);cursor:pointer}
 .permrow input{width:16px;height:16px;accent-color:var(--blue)}
+
+/* ==========================================================================
+   LISTES ADAPTATIVES — la ligne devient une CARTE sous 640 px (18/09/2026)
+   --------------------------------------------------------------------------
+   Mesuré au banc à 360 px AVANT ce lot, sur la liste des Factures :
+   « F-2026-000026 » rendu sur trois lignes, « / 7 600 € » sur deux (le « € »
+   seul en bas), « Acompte reçu » sur trois, et un document large de 644 px
+   dans une fenêtre de 360 — la page défilait latéralement et passait sous le
+   menu. Réduire la police ou les marges ne répare rien : un tableau de six
+   colonnes reste un tableau de six colonnes.
+
+   Le seuil vit ICI et nulle part ailleurs : aucun rendu ne dépend d'une
+   mesure JavaScript, donc rien ne clignote au chargement ni à la rotation.
+   Au-dessus de 640 px, ce bloc n'existe pas et le tableau est intact.
+   ========================================================================== */
+.liste-cartes{display:none}
+/* Un montant ne se sépare JAMAIS de son symbole monétaire. La séparation de
+   milliers de `money()` est déjà insécable (U+202F) ; l'espace avant « € »,
+   elle, est une espace ordinaire — donc un point de coupure. D'où ce nowrap,
+   posé sur le conteneur plutôt qu'en réécrivant `money()` : la fonction sert
+   aussi au PDF, auquel ce lot ne touche pas. */
+.montant{white-space:nowrap}
+
+@media (max-width:640px){
+  .liste-tableau{display:none}
+  .liste-cartes{display:flex;flex-direction:column;gap:10px}
+
+  .carte{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .carte-corps{padding:13px 14px 12px;display:flex;flex-direction:column;gap:7px;font-size:14px;line-height:1.45}
+  .carte-corps.clickable{cursor:pointer}
+  .carte-corps.clickable:active{background:var(--surface)}
+  .carte-h{display:flex;flex-direction:column;gap:2px;min-width:0}
+  /* LE numéro de document : insécable, et jamais rétréci pour faire rentrer. */
+  .carte-num{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap;letter-spacing:-.01em}
+  /* Un NOM n'est pas un numéro : l'imposer sur une ligne le ferait déborder
+     de la carte, donc rendrait le défilement horizontal. Il se replie, sans
+     jamais rapetisser. */
+  .carte-num-libre{white-space:normal;overflow-wrap:anywhere}
+  .carte-nom{font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+  .carte-l{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .carte-date{font-size:14px;color:var(--muted);white-space:nowrap}
+  .carte-statut{flex:0 0 auto}
+  .carte-statut .badge{white-space:nowrap}
+  .carte-montant{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .carte-montant .muted{font-weight:600}
+  .carte-details{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:1px 0 0;font-size:14px}
+  .carte-details dt{color:var(--muted);white-space:nowrap}
+  .carte-details dd{margin:0;color:var(--ink);overflow-wrap:anywhere;min-width:0}
+  /* La note d'un paiement est tronquée dans le tableau (max-width + ellipsis) ;
+     dans la carte elle s'affiche en entier — on ne cache rien. */
+  .carte-details dd .chip{font-size:13.5px}
+  .carte-actions{display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--surface-2);background:#fcfdfe}
+  /* 44 px en hauteur ET en largeur, sur CHAQUE bouton de carte. */
+  .carte-actions .btn{min-height:44px;min-width:44px;padding:10px 14px;font-size:14px;justify-content:center}
+  .carte-actions .btn-ghost{border-color:var(--line);background:#fff}
+
+  /* ---- La barre du haut débordait : mesurée à 644 px pour 360 de fenêtre.
+       Elle passe sur deux rangées, la recherche prenant la seconde. ---- */
+  .topbar{height:auto;min-height:56px;flex-wrap:wrap;gap:8px;row-gap:8px;padding:8px 12px}
+  .topbar h1{flex:1 1 auto;min-width:0;font-size:16px;overflow-wrap:anywhere}
+  .search{order:10;flex:1 1 100%;max-width:none}
+  /* La pastille de synchronisation garde son POINT — donc son état, à la
+     couleur — et son infobulle ; seuls son libellé et son horodatage
+     tombent, faute de place. Aucune information de liste n'est masquée. */
+  .syncpill{padding:0;border:none;background:transparent;gap:0}
+  .syncpill .syncsl,.syncpill .syncts{display:none}
+  /* Les commandes de la barre atteignent 44 px elles aussi. */
+  .menu-btn{width:44px;height:44px}
+  .topbar .btn{min-height:44px;min-width:44px;padding:10px}
+
+  /* La section « Paiements non rattachés » garde son cadre au bureau ; sur
+     téléphone, il s'effacerait mal autour de cartes qui ont déjà le leur. */
+  .bloc-orphelins{background:transparent;border:none;box-shadow:none}
+  .bloc-orphelins>.card-pad{padding:0 0 10px}
+
+  /* ---- Le menu latéral : il s'ouvre par-dessus la page sur téléphone,
+       ses commandes se touchent donc au doigt elles aussi. ---- */
+  .sidebar .nav-item{min-height:44px}
+  .sidebar .btn{min-height:44px;min-width:44px;padding:10px}
+
+  /* ---- La barre d'outils d'une liste et ses filtres ---- */
+  .toolbar .btn{min-height:44px}
+  .seg{width:100%;flex-wrap:wrap}
+  .seg button{min-height:44px;padding:10px 14px;font-size:13.5px;flex:1 1 auto}
+}

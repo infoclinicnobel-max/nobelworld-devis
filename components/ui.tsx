@@ -268,6 +268,14 @@ export class ErrorBoundary extends React.Component<
   componentDidCatch(err: Error, info: React.ErrorInfo) {
     console.error('[CN][ErrorBoundary]', this.props.zone || '', err, info && info.componentStack);
   }
+  /* La barrière se réarme quand la ZONE change. C'est ce que faisait la `key`
+     posée par Shell, mais la `key` démontait au passage tout le sous-arbre —
+     163 nœuds détruits et reconstruits à la première lettre tapée dans la
+     recherche, mesuré au banc le 18/09. Ici, l'état d'erreur se remet à zéro
+     et les enfants sont conservés. */
+  componentDidUpdate(prev: { zone?: string }) {
+    if (prev.zone !== this.props.zone && this.state.err) this.setState({ err: null });
+  }
   render() {
     if (this.state.err) {
       return (

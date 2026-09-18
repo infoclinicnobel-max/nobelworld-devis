@@ -415,6 +415,26 @@ Autres invariants :
   coupait **déjà** avant le « € » à 1280 px (capture à l'appui). La règle « un montant ne se
   sépare jamais de son symbole » le répare aussi là — 0,9 % des pixels de la liste, aucune
   colonne masquée, aucun montant modifié.
+- **Le champ de recherche garde son texte lui-même, et n'est jamais réécrit pendant une
+  composition de clavier (18/09/2026).** Signalé par Veys sur Android (SwiftKey) : il tape
+  « L a u », le champ contient « uaL » — les lettres dans l'ordre inverse, sur Factures comme
+  sur Paiements. ⚠ **Non reproduit sur Chromium/Linux** : au banc, frappe par frappe (60 ms
+  d'écart) puis en émulant la composition par le protocole DevTools, sur les quatre écrans et
+  six chaînes (accents, majuscules accentuées, chiffres, effacements), le champ reçoit
+  exactement ce qui est tapé, curseur à la fin — **48 contrôles sur 48, avant comme après**.
+  Le symptôme ne se reproduit qu'en forçant une zone de composition périmée pointant sur 0,
+  et un champ HTML **nu** se renverse alors à l'identique : ce modèle prouve la mécanique,
+  pas la responsabilité de l'application. Ce qui est mesuré, en revanche : chaque frappe
+  bloquait le fil principal de 188 à 442 ms (processeur bridé ×20), et la première détruisait
+  puis reconstruisait tout le sous-arbre de `.content` (163 nœuds → 26) — un fil bloqué
+  pendant une composition est la voie connue par laquelle la zone de composition d'un IME
+  Android se périme. `ChampRecherche` applique donc le remède habituel de cette famille de
+  défauts : le DOM fait foi pendant la frappe (`defaultValue`, jamais `value`), aucune
+  synchronisation n'est tentée entre `compositionstart` et `compositionend`, et une valeur
+  venue de l'extérieur (« Effacer », navigation) repose le curseur **à la fin**, jamais en 0.
+  La barrière d'erreur se réarme sur changement de `zone` au lieu d'une `key` qui changeait à
+  la première lettre. La logique de recherche n'est pas touchée. Seul le téléphone de Veys
+  peut confirmer.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

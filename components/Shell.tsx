@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Empty, ErrorBoundary, Modal, OverlayCtx, useToast } from './ui';
 import { Ico, type IconType } from './icons';
 import { AppCtx, type AppCtxValue, type Cible } from './AppContext';
+import { ChampRecherche } from './ChampRecherche';
 import { Dashboard } from './Dashboard';
 import { SearchResults } from './SearchResults';
 import { PatientsView } from './Patients';
@@ -51,7 +52,9 @@ function SyncPill({ state, lastSync }: { state: SyncState; lastSync: number }) {
       title={lastSync ? 'Dernière synchronisation : ' + fmtClock(lastSync) : 'Aucune synchronisation encore'}
     >
       <span className="syncdot" style={{ background: col }} />
-      {lbl}
+      {/* Le libellé porte une classe pour pouvoir tomber sous 640 px, où la
+          barre n'a pas la place : le POINT et l'infobulle, eux, restent. */}
+      <span className="syncsl">{lbl}</span>
       {state === 'ok' && lastSync ? <span className="syncts"> · {fmtClock(lastSync)}</span> : null}
     </span>
   );
@@ -321,14 +324,13 @@ export function Shell({
                 <Ico.chevron size={18} />
               </button>
               <h1>{title}</h1>
-              <div className="search">
-                <Ico.search size={16} className="ic" />
-                <input
-                  placeholder="Rechercher patient, devis, facture…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-              </div>
+              {/* Le champ garde son texte lui-même et n'est jamais réécrit
+                  pendant une composition de clavier : voir ChampRecherche. */}
+              <ChampRecherche
+                valeur={q}
+                onChange={setQ}
+                placeholder="Rechercher patient, devis, facture…"
+              />
               {loading && <span className="spin" />}
               <SyncPill state={syncState} lastSync={lastSync} />
               <button
@@ -356,7 +358,11 @@ export function Shell({
               </div>
             )}
             <div className="content">
-              <ErrorBoundary zone={view} key={view + (q.trim() ? '-s' : '')}>
+              {/* La `key` portait `q` : à la PREMIÈRE frappe elle changeait, et
+                  tout le sous-arbre était démonté puis remonté (163 nœuds → 26
+                  au banc). La barrière se réarme désormais sur changement de
+                  `zone`, sans démontage — même effet, sans le coût. */}
+              <ErrorBoundary zone={view + (q.trim() ? '-recherche' : '')}>
                 {q.trim() ? <SearchResults q={q} onClear={() => setQ('')} /> : <Current />}
               </ErrorBoundary>
             </div>

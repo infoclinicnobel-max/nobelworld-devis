@@ -384,6 +384,103 @@ Autres invariants :
   `index.html` ne vaut plus pour le bloc bancaire de D-2026-000011 — ce devis n'a aucune
   coordonnée photographiée, il prend donc les cinq lignes. C'est l'objet même du lot ; le
   reste du document est inchangé.
+- **Sur téléphone, une ligne de liste est une CARTE, pas une rangée de tableau (18/09/2026).**
+  Constaté par Veys sur la liste des Factures, puis mesuré au banc à 360 px : « F-2026-000026 »
+  rendu sur **trois** lignes (F- / 2026- / 000026), « / 7 600 € » sur deux avec le « € » seul
+  en bas, « Acompte reçu » sur trois, et un document large de **644 px dans une fenêtre de
+  360** — la page défilait latéralement et passait sous le menu. Réduire la police, les marges,
+  ou masquer des colonnes ne répare rien : un tableau de six colonnes reste un tableau de six
+  colonnes. Sous **640 px**, chaque ligne devient donc une carte — numéro et patiente, date et
+  statut, payé / total, actions — et **toute** l'information du tableau y reste : la note d'un
+  paiement, tronquée à 170 px avec des points de suite dans le tableau, s'y affiche en entier.
+  Au-dessus du seuil, le tableau est **inchangé** : `ListeAdaptative` recopie les cellules
+  qu'on lui donne, classes et styles compris — vérifié au pixel près (Factures, Paiements et
+  Patients : 0 pixel de différence à 1280 px). Le seuil vit dans la feuille de style, jamais
+  dans une mesure JavaScript : rien ne clignote au chargement ni à la rotation.
+- **Les garanties du mode carte sont tenues par la CSS, et mesurées** — 104 contrôles sur
+  4 listes × 360/390/430 px, plus le bureau : un numéro de document **insécable** (22 px de
+  haut, une seule ligne) ; un montant **insécable** avec son symbole (`.montant`, posé sur le
+  conteneur plutôt qu'en réécrivant `money()`, qui sert aussi au PDF) ; une pastille de statut
+  sur une ligne ; **zéro** défilement horizontal (largeur du document == largeur de la fenêtre
+  aux trois largeurs) ; **44 px** minimum sur chaque bouton, barre du haut et menu latéral
+  compris ; corps de liste à **14 px**. La barre du haut débordait elle aussi (pastille de
+  synchronisation et bouton de rafraîchissement à 478 px pour 360 de fenêtre) : elle passe sur
+  deux rangées, la recherche prenant la seconde, et la pastille garde son point — donc son
+  état — en perdant son libellé.
+  ⚠ Un **nom** n'est pas un numéro : `titreInsecable: false` sur la liste Patients. L'imposer
+  sur une ligne ferait déborder « Marie-Alexandrine de Villeneuve-Castellane-Montmorency » de
+  sa carte, donc ramènerait le défilement qu'on vient de supprimer. Un nom se replie, un numéro
+  jamais.
+  ⚠ Le seul changement visible au bureau est sur la liste **Devis** : son total « 12 400 € » se
+  coupait **déjà** avant le « € » à 1280 px (capture à l'appui). La règle « un montant ne se
+  sépare jamais de son symbole » le répare aussi là — 0,9 % des pixels de la liste, aucune
+  colonne masquée, aucun montant modifié.
+- **Le champ de recherche garde son texte lui-même, et n'est jamais réécrit pendant une
+  composition de clavier (18/09/2026).** Signalé par Veys sur Android (SwiftKey) : il tape
+  « L a u », le champ contient « uaL » — les lettres dans l'ordre inverse, sur Factures comme
+  sur Paiements. ⚠ **Non reproduit sur Chromium/Linux** : au banc, frappe par frappe (60 ms
+  d'écart) puis en émulant la composition par le protocole DevTools, sur les quatre écrans et
+  six chaînes (accents, majuscules accentuées, chiffres, effacements), le champ reçoit
+  exactement ce qui est tapé, curseur à la fin — **48 contrôles sur 48, avant comme après**.
+  Le symptôme ne se reproduit qu'en forçant une zone de composition périmée pointant sur 0,
+  et un champ HTML **nu** se renverse alors à l'identique : ce modèle prouve la mécanique,
+  pas la responsabilité de l'application. Ce qui est mesuré, en revanche : chaque frappe
+  bloquait le fil principal de 188 à 442 ms (processeur bridé ×20), et la première détruisait
+  puis reconstruisait tout le sous-arbre de `.content` (163 nœuds → 26) — un fil bloqué
+  pendant une composition est la voie connue par laquelle la zone de composition d'un IME
+  Android se périme. `ChampRecherche` applique donc le remède habituel de cette famille de
+  défauts : le DOM fait foi pendant la frappe (`defaultValue`, jamais `value`), aucune
+  synchronisation n'est tentée entre `compositionstart` et `compositionend`, et une valeur
+  venue de l'extérieur (« Effacer », navigation) repose le curseur **à la fin**, jamais en 0.
+  La barrière d'erreur se réarme sur changement de `zone` au lieu d'une `key` qui changeait à
+  la première lettre. La logique de recherche n'est pas touchée. Seul le téléphone de Veys
+  peut confirmer.
+- **Un lien de paiement peut partir SANS devis — et le montant se saisit alors ici
+  (18/09/2026).** Demandé par Veys : « quand je dois faire un paiement, même si je n'ai pas de
+  devis, je mets le nom du patient et je fais un paiement par Paysera » — les gens arrivent pour
+  autre chose, ou ils avaient déjà un devis et ont payé la facture. Trois champs, pas un de
+  plus : la personne (une fiche, **ou** un nom libre — aucune fiche n'est créée), le montant, un
+  libellé court (80 caractères) que la personne lit sur la page de paiement. ⚠ **Le lien qui part
+  d'un devis n'est pas touché** : `mode` vaut `'devis'` par défaut dans la route, l'ancien corps
+  de requête passe inchangé, et le montant y vient toujours du devis relu en base. Le chemin
+  technique est **le même**, pas un second : même route serveur `app/api/paysera/lien-devis`,
+  même secret côté serveur, même endpoint du site, même table `nw_liens_paiement`, même trace
+  `nw_historique`, même permission `paiementLienPaysera` (admin seul, `can()` à l'écran **et**
+  dans la route).
+  ⚠ **Ce mode rouvre, sciemment, la règle du 16/09 « le montant vient uniquement du devis ».**
+  Il n'y a ici aucun devis d'où le lire : le montant est donc une saisie, et c'est la nature
+  même de la demande. Ce qui l'encadre : bornes du contrat Paysera (1 à 50 000 €), admin seul,
+  et la **même** fonction pure `refusDemandeLibre` (`lib/lienPaiement.ts`) appliquée à l'écran
+  et dans la route — l'écran refuse mot pour mot ce que le serveur refuserait, mais c'est le
+  serveur qui décide. ⛔ **Aucun tarif n'est écrit en dur** dans cet écran ; le jour où une
+  intervention doit s'y afficher avec son prix, il viendra du catalogue du CRM.
+  **L'argent : `nw_paiements` n'a besoin d'aucun changement** — `facture_id` y est déjà
+  nullable, et **2 lignes sur 17** le sont déjà en base. Un paiement sans devis n'a par nature
+  aucune facture : il s'enregistre **non rattaché**, son montant compte dans le total encaissé
+  dès l'encaissement, il apparaît dans la rubrique « Paiements non rattachés » de l'écran
+  Paiements (déjà présente, reformulée pour dire cette seconde origine) et une facture peut lui
+  être choisie plus tard. La migration `db/migration-20260918-lien-libre.sql` (appliquée le
+  18/09/2026, sauvegarde `sauvegarde_nw_liens_paiement_20260918`) ne touche **que**
+  `nw_liens_paiement` — `devis_id` devient nullable, `libelle`, `patient_id` et `patient_nom`
+  s'ajoutent — plus une troisième branche `'libre'` dans `nw_prochain_numero`, qui délivre les
+  références `L-AAAA-NNNNNN` par le même compteur atomique que les devis et les factures : la
+  numérotation ne se calcule toujours pas côté navigateur. ⚠ La branche est **installée**
+  (relue dans la définition déployée de la fonction), mais **aucune référence `L-` n'a encore
+  été tirée** : la fonction refuse le rôle de l'atelier par sa propre garde d'accès, et c'est
+  très bien ainsi. Ses trois lignes sont celles des branches devis et factures, au préfixe et
+  à la clé près ; la première vraie référence naîtra du premier lien créé par Veys.
+  ⚠ Conséquence assumée : le site exige la référence **dans** sa demande, elle est donc tirée
+  **avant** l'appel — un appel qui échoue laisse un **trou** dans la série `L-`. C'est sans
+  portée : cette série numérote des liens de paiement, pas des documents comptables, et un
+  numéro tiré sans lien ne se retrouve nulle part. Un trou dans `D-` ou `F-` serait, lui, une
+  autre affaire. Recette
+  `scripts/recette-lien-paiement.ts` (83 contrôles) plus un banc navigateur (17 contrôles :
+  trois champs, refus à 60 000 € **avant** tout appel, corps de requête sans aucun secret,
+  refus serveur faute de session, paiement non rattaché visible dans la liste).
+  ⚠ **Non vérifié** : que l'endpoint du site accepte une référence `L-2026-000001` dans son
+  champ `devis`. Le réseau sortant de l'atelier bloque `www.clinicnobel.com` ; ce point ne peut
+  se constater qu'au premier lien créé depuis le téléphone de Veys. Si le site la refuse, c'est
+  lui qui doit s'élargir — ce dépôt n'appelle jamais Paysera.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

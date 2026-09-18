@@ -3,9 +3,11 @@
 import React, { useState } from 'react';
 import { Confirm, Empty, Field, Input, Kpi, Modal, Select, useDirtyGuard } from './ui';
 import { Ico } from './icons';
+import { ListeAdaptative, Montant } from './ListeAdaptative';
+import { ModaleLienLibre } from './LienLibre';
 import { useApp } from './AppContext';
 import { fmtDate, money, normalizeDate, todayISO } from '@/lib/format';
-import { can } from '@/lib/perms';
+import { can, PERM_LIEN_PAIEMENT } from '@/lib/perms';
 import { factPayments, PAY_MODES, patientName, totalOf } from '@/lib/calc';
 import type { Paiement } from '@/lib/types';
 
@@ -144,6 +146,8 @@ export function PaiementsView() {
   const { data, user, remove, toast } = useApp();
   const cur = data.parametres.currency || '€';
   const [edit, setEdit] = useState<Partial<Paiement> | null>(null);
+  /* La modale « Nouveau lien de paiement » — un lien sans devis. */
+  const [lienLibre, setLienLibre] = useState(false);
   const [del, setDel] = useState<Paiement | null>(null);
   const canVoir = can(user, 'all') || can(user, 'paymentView') || can(user, 'paymentEdit');
   if (!canVoir)
@@ -166,39 +170,53 @@ export function PaiementsView() {
   all.forEach((p) => { byMode[p.mode || '—'] = (byMode[p.mode || '—'] || 0) + Number(p.montant || 0); });
   const canAdd = can(user, 'paymentEdit') || can(user, 'all');
 
-  const ligne = (p: Paiement) => (
-    <tr key={p.id}>
-      <td className="muted">{fmtDate(p.date)}</td>
-      <td className="t-strong">{p.refNum || '—'}</td>
-      <td className="muted">{TYPE_LABELS[p.type] || 'Paiement'}</td>
-      <td><span className="chip">{p.mode || '—'}</span></td>
-      <td className="muted" style={{ maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {p.note || '—'}
-      </td>
-      <td className="tnum t-strong" style={{ textAlign: 'right' }}>{money(p.montant, cur)}</td>
-      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-        {canAdd && (
-          <>
-            <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEdit(p)}>
-              <Ico.edit size={15} />
-            </button>
-            <button className="btn btn-ghost btn-sm" title="Supprimer" onClick={() => setDel(p)}>
-              <Ico.trash size={15} />
-            </button>
-          </>
-        )}
-      </td>
-    </tr>
-  );
+  /* Les COLONNES du tableau (bureau) et la CARTE (téléphone) d'un paiement.
+     Sous 640 px, la note s'affiche EN ENTIER : le tableau, lui, la tronque à
+     170 px avec des points de suite — on ne masque rien sur la carte. */
+  const COLONNES = [
+    { titre: 'Date' }, { titre: 'Facture' }, { titre: 'Type' }, { titre: 'Mode' }, { titre: 'Note' },
+    { titre: 'Montant', className: 'r', style: { textAlign: 'right' as const } }, {},
+  ];
 
-  const entete = (
-    <thead>
-      <tr>
-        <th>Date</th><th>Facture</th><th>Type</th><th>Mode</th><th>Note</th>
-        <th className="r" style={{ textAlign: 'right' }}>Montant</th><th></th>
-      </tr>
-    </thead>
-  );
+  const ligne = (p: Paiement) => {
+    const mode = <span className="chip">{p.mode || '—'}</span>;
+    const montant = <Montant className="tnum t-strong">{money(p.montant, cur)}</Montant>;
+    const actions = canAdd ? (
+      <>
+        <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEdit(p)}>
+          <Ico.edit size={15} />
+        </button>
+        <button className="btn btn-ghost btn-sm" title="Supprimer" onClick={() => setDel(p)}>
+          <Ico.trash size={15} />
+        </button>
+      </>
+    ) : undefined;
+    return {
+      cle: String(p.id || `${p.refNum}-${p.date}-${p.montant}`),
+      cellules: [
+        { contenu: fmtDate(p.date), className: 'muted' },
+        { contenu: p.refNum || '—', className: 't-strong' },
+        { contenu: TYPE_LABELS[p.type] || 'Paiement', className: 'muted' },
+        { contenu: mode },
+        {
+          contenu: p.note || '—',
+          className: 'muted',
+          style: { maxWidth: 170, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
+        },
+        { contenu: montant, className: 'tnum t-strong', style: { textAlign: 'right' as const } },
+        { contenu: actions, style: { textAlign: 'right' as const, whiteSpace: 'nowrap' as const } },
+      ],
+      carte: {
+        titre: p.refNum || '—',
+        sousTitre: TYPE_LABELS[p.type] || 'Paiement',
+        date: fmtDate(p.date),
+        statut: mode,
+        montant,
+        details: [{ libelle: 'Note', valeur: p.note || '—' }],
+      },
+      actions,
+    };
+  };
 
   return (
     <>
@@ -210,6 +228,14 @@ export function PaiementsView() {
           </div>
         </div>
         <div className="sp" />
+        {/* Un lien de paiement SANS devis — réservé au même rôle que le lien
+            depuis un devis, et passant par la même route serveur. Le lien
+            depuis un devis, lui, ne change pas d'un caractère. */}
+        {can(user, PERM_LIEN_PAIEMENT) && (
+          <button className="btn" onClick={() => setLienLibre(true)}>
+            <Ico.send size={16} />Nouveau lien de paiement
+          </button>
+        )}
         {canAdd && (
           <button className="btn btn-primary" onClick={() => setEdit({})}>
             <Ico.plus size={16} />Ajouter un paiement
@@ -223,28 +249,33 @@ export function PaiementsView() {
           <Kpi key={m} label={m} value={money(v, cur)} />
         ))}
       </div>
-      <div className="card">
-        {list.length ? (
-          <table>{entete}<tbody>{list.map(ligne)}</tbody></table>
-        ) : (
-          <Empty icon={Ico.wallet} title="Aucun paiement" sub="Les encaissements apparaîtront ici." />
-        )}
-      </div>
+      <ListeAdaptative
+        colonnes={COLONNES}
+        lignes={list.map(ligne)}
+        vide={<Empty icon={Ico.wallet} title="Aucun paiement" sub="Les encaissements apparaîtront ici." />}
+      />
 
       {orphelins.length > 0 && (
-        <div className="card" style={{ marginTop: 18 }}>
+        /* Structure d'origine CONSERVÉE : une seule carte, son paragraphe
+           d'explication puis la liste sans cadre propre — au bureau, le
+           rendu est identique au pixel près. Sous 640 px, le cadre extérieur
+           s'effface pour laisser les cartes respirer (`bloc-orphelins`). */
+        <div className="card bloc-orphelins" style={{ marginTop: 18 }}>
           <div className="card-pad" style={{ paddingBottom: 0 }}>
             <h2 style={{ fontSize: 14, margin: 0 }}>Paiements non rattachés</h2>
             <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.55, margin: '6px 0 0' }}>
-              {orphelins.length} mouvement(s) sans facture liée — la facture d&apos;origine a été supprimée. Les
-              montants restent comptabilisés dans le total encaissé ; rattachez-les à une facture existante en les
-              modifiant.
+              {orphelins.length} mouvement(s) sans facture liée — soit la facture d&apos;origine a été supprimée,
+              soit le paiement vient d&apos;un <b>lien de paiement sans devis</b>, qui n&apos;a par nature aucune
+              facture. Les montants sont comptabilisés dans le total encaissé dès l&apos;encaissement ;{' '}
+              <b>le rattachement comptable peut attendre</b> : ouvrez le paiement et choisissez-lui une facture
+              quand elle existe.
             </p>
           </div>
-          <table>{entete}<tbody>{orphelins.map(ligne)}</tbody></table>
+          <ListeAdaptative colonnes={COLONNES} lignes={orphelins.map(ligne)} cadre={false} />
         </div>
       )}
 
+      {lienLibre && <ModaleLienLibre onClose={() => setLienLibre(false)} />}
       {edit && <PaymentLineEditor payment={edit} onClose={() => setEdit(null)} />}
       {del && (
         <Confirm

@@ -6,6 +6,7 @@ import {
   useNavOverlay,
 } from './ui';
 import { Ico } from './icons';
+import { ListeAdaptative, Montant } from './ListeAdaptative';
 import { DocumentView } from './DocumentView';
 import { DevisDoc, type DocHandlers } from './DevisDoc';
 import { useApp } from './AppContext';
@@ -283,61 +284,75 @@ export function FacturesView() {
           </button>
         )}
       </div>
-      <div className="card">
-        {list.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>N°</th><th>Patient</th><th>Date</th><th>Statut</th>
-                <th className="r" style={{ textAlign: 'right' }}>Payé / Total</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((f) => {
-                const p = data.patients.find((x) => x.id === f.patientId);
-                const pays = factPayments(data.paiements, f.id);
-                const paid = pays.reduce((s, pm) => s + Number(pm.montant || 0), 0);
-                const tot = totalOf(f);
-                return (
-                  <tr key={f.id} className="clickable" onClick={() => setDetail(f)}>
-                    <td className="t-strong">{f.numero}</td>
-                    <td>{patientName(p)}</td>
-                    <td className="muted">{fmtDate(f.date)}</td>
-                    <td><StatusBadge s={factureStatus(f, pays)} /></td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span className="tnum t-strong">{money(paid, cur)}</span>{' '}
-                      <span className="muted tnum">/ {money(tot, cur)}</span>
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {canEditFacture && (
-                        <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(f)}>
-                          <Ico.edit size={15} />
-                        </button>
-                      )}
-                      {(can(user, 'paymentEdit') || can(user, 'all') || can(user, 'factureCreate')) && (
-                        <button className="btn btn-ghost btn-sm" title="Paiements" onClick={() => setDetail(f)}>
-                          <Ico.wallet size={15} />
-                        </button>
-                      )}
-                      {can(user, 'all') && (
-                        <button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={() => setDel(f)}>
-                          <Ico.trash size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
+      {/* Tableau au bureau, CARTES sous 640 px — un seul composant pour les
+          quatre listes, et toute l'information du tableau reste dans la
+          carte. Voir components/ListeAdaptative.tsx pour le relevé qui a
+          motivé le lot. */}
+      <ListeAdaptative
+        colonnes={[
+          { titre: 'N°' }, { titre: 'Patient' }, { titre: 'Date' }, { titre: 'Statut' },
+          { titre: 'Payé / Total', className: 'r', style: { textAlign: 'right' } }, {},
+        ]}
+        lignes={list.map((f) => {
+          const p = data.patients.find((x) => x.id === f.patientId);
+          const pays = factPayments(data.paiements, f.id);
+          const paid = pays.reduce((s, pm) => s + Number(pm.montant || 0), 0);
+          const tot = totalOf(f);
+          const statut = <StatusBadge s={factureStatus(f, pays)} />;
+          const montant = (
+            <>
+              <Montant className="tnum t-strong">{money(paid, cur)}</Montant>{' '}
+              <Montant className="muted tnum">/ {money(tot, cur)}</Montant>
+            </>
+          );
+          const actions = (
+            <>
+              {canEditFacture && (
+                <button className="btn btn-ghost btn-sm" title="Modifier" onClick={() => setEditor(f)}>
+                  <Ico.edit size={15} />
+                </button>
+              )}
+              {(can(user, 'paymentEdit') || can(user, 'all') || can(user, 'factureCreate')) && (
+                <button className="btn btn-ghost btn-sm" title="Paiements" onClick={() => setDetail(f)}>
+                  <Ico.wallet size={15} />
+                </button>
+              )}
+              {can(user, 'all') && (
+                <button className="btn btn-ghost btn-sm btn-danger" title="Supprimer" onClick={() => setDel(f)}>
+                  <Ico.trash size={15} />
+                </button>
+              )}
+            </>
+          );
+          return {
+            cle: String(f.id || f.numero),
+            onClick: () => setDetail(f),
+            cellules: [
+              { contenu: f.numero, className: 't-strong' },
+              { contenu: patientName(p) },
+              { contenu: fmtDate(f.date), className: 'muted' },
+              { contenu: statut },
+              { contenu: montant, style: { textAlign: 'right' } },
+              { contenu: actions, stop: true, style: { textAlign: 'right', whiteSpace: 'nowrap' } },
+            ],
+            carte: {
+              titre: f.numero,
+              sousTitre: patientName(p),
+              date: fmtDate(f.date),
+              statut,
+              montant,
+            },
+            actions,
+          };
+        })}
+        vide={(
           <Empty
             icon={Ico.invoice}
             title="Aucune facture"
             sub="Transformez un devis accepté en facture depuis le module Devis."
           />
         )}
-      </div>
+      />
       {create && (
         <FactureCreateModal
           onClose={() => setCreate(false)}

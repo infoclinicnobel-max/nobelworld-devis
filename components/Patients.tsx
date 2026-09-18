@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Confirm, Drawer, Empty, Field, Input, Textarea, useDirtyGuard } from './ui';
 import { Ico } from './icons';
 import { useApp } from './AppContext';
@@ -14,11 +14,23 @@ import type { Patient } from '@/lib/types';
    ------------------------------------------------------------------------- */
 
 export function PatientsView() {
-  const { data, save, user, toast } = useApp();
+  const { data, save, user, toast, cible, cibleAtteinte } = useApp();
   const [edit, setEdit] = useState<Partial<Patient> | null>(null);
   const [del, setDel] = useState<Patient | null>(null);
   const seeAllPat = can(user, 'all') || can(user, 'patientViewAll');
   const list = seeAllPat ? data.patients : data.patients.filter((p) => estDeMoi(user, p.createdBy));
+
+  /* Arrivée depuis la recherche : la cible porte l'identifiant de la fiche,
+     retrouvée dans les données — jamais un rang dans une liste. Consommée
+     une fois, puis effacée. Une fiche introuvable se dit, ne se devine pas. */
+  useEffect(() => {
+    if (!cible || cible.type !== 'patient') return;
+    const p = data.patients.find((x) => x.id === cible.id);
+    if (p) setEdit(p);
+    else toast('Fiche patient introuvable dans les données chargées.', 'err');
+    cibleAtteinte();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cible]);
 
   return (
     <>

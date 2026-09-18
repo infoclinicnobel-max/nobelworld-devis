@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Empty, ErrorBoundary, Modal, OverlayCtx, useToast } from './ui';
 import { Ico, type IconType } from './icons';
-import { AppCtx, type AppCtxValue } from './AppContext';
+import { AppCtx, type AppCtxValue, type Cible } from './AppContext';
 import { Dashboard } from './Dashboard';
 import { SearchResults } from './SearchResults';
 import { PatientsView } from './Patients';
@@ -90,10 +90,21 @@ export function Shell({
     requestAnimationFrame(() => window.scrollTo(0, y));
     syncNavUI();
   };
-  const navGo = useCallback((v: string) => {
+  /* Le dossier que la vue d'arrivée doit ouvrir. Mesuré le 18/09 : le clic
+     sur un résultat de recherche appelait go('patients') sans rien d'autre —
+     la vue changeait de titre, la recherche restait affichée, aucune fiche ne
+     s'ouvrait (0 clic juste sur 7). La cible porte l'IDENTIFIANT du dossier ;
+     la vue le retrouve dans ses données, jamais par un rang. */
+  const [cible, setCible] = useState<Cible | null>(null);
+  const navGo = useCallback((v: string, c?: Cible) => {
     if (!v) return;
     // ferme la fenêtre ouverte d'abord (garde anti-perte)
     if (overlays.current.length) { overlays.current[overlays.current.length - 1].close(); return; }
+    if (c) setCible(c);
+    /* La recherche s'efface à la navigation : sinon ses résultats restent à
+       l'écran par-dessus la vue demandée, et le clic semble « aller n'importe
+       où ». */
+    setQ('');
     if (v === navStack.current[navPos.current].view) return; // déjà sur cette page
     navStack.current[navPos.current].scroll = window.scrollY || 0; // mémorise le défilement quitté
     navStack.current = navStack.current.slice(0, navPos.current + 1);
@@ -210,6 +221,8 @@ export function Shell({
       }
     },
     go: navGo,
+    cible,
+    cibleAtteinte: () => setCible(null),
     registerOverlay(close: () => void) {
       const id = ++ovSeq.current;
       overlays.current.push({ id, close });

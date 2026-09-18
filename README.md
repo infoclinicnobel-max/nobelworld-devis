@@ -333,6 +333,14 @@ Autres invariants :
   créé (type, montant, devis, référence, expiration). Le panneau vit **hors de
   `#print-area`** : il ne s'imprime jamais avec le document. Recette
   `scripts/recette-lien-paiement.ts` (65 contrôles).
+- **Un résultat de recherche s'ouvre par son identifiant, jamais par sa position (18/09/2026).**
+  Mesuré au banc avant correctif : 0 clic juste sur 7 depuis les résultats — le clic
+  appelait `go('patients')` sans rien d'autre, la vue changeait de titre sous des résultats
+  restés affichés (`q` jamais effacé), aucune fiche ne s'ouvrait. Désormais `go(vue, cible)`
+  porte `{ type, id }`, la navigation efface la recherche, et la vue d'arrivée (patients,
+  devis, factures) retrouve le dossier dans **ses** données par `id` puis consomme la cible
+  (`cibleAtteinte`). Un dossier introuvable se dit, ne se devine pas. Ne jamais transmettre
+  un rang : la liste de la vue n'est ni celle des résultats ni dans le même ordre.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

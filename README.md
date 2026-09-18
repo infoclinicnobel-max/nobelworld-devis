@@ -435,6 +435,52 @@ Autres invariants :
   La barrière d'erreur se réarme sur changement de `zone` au lieu d'une `key` qui changeait à
   la première lettre. La logique de recherche n'est pas touchée. Seul le téléphone de Veys
   peut confirmer.
+- **Un lien de paiement peut partir SANS devis — et le montant se saisit alors ici
+  (18/09/2026).** Demandé par Veys : « quand je dois faire un paiement, même si je n'ai pas de
+  devis, je mets le nom du patient et je fais un paiement par Paysera » — les gens arrivent pour
+  autre chose, ou ils avaient déjà un devis et ont payé la facture. Trois champs, pas un de
+  plus : la personne (une fiche, **ou** un nom libre — aucune fiche n'est créée), le montant, un
+  libellé court (80 caractères) que la personne lit sur la page de paiement. ⚠ **Le lien qui part
+  d'un devis n'est pas touché** : `mode` vaut `'devis'` par défaut dans la route, l'ancien corps
+  de requête passe inchangé, et le montant y vient toujours du devis relu en base. Le chemin
+  technique est **le même**, pas un second : même route serveur `app/api/paysera/lien-devis`,
+  même secret côté serveur, même endpoint du site, même table `nw_liens_paiement`, même trace
+  `nw_historique`, même permission `paiementLienPaysera` (admin seul, `can()` à l'écran **et**
+  dans la route).
+  ⚠ **Ce mode rouvre, sciemment, la règle du 16/09 « le montant vient uniquement du devis ».**
+  Il n'y a ici aucun devis d'où le lire : le montant est donc une saisie, et c'est la nature
+  même de la demande. Ce qui l'encadre : bornes du contrat Paysera (1 à 50 000 €), admin seul,
+  et la **même** fonction pure `refusDemandeLibre` (`lib/lienPaiement.ts`) appliquée à l'écran
+  et dans la route — l'écran refuse mot pour mot ce que le serveur refuserait, mais c'est le
+  serveur qui décide. ⛔ **Aucun tarif n'est écrit en dur** dans cet écran ; le jour où une
+  intervention doit s'y afficher avec son prix, il viendra du catalogue du CRM.
+  **L'argent : `nw_paiements` n'a besoin d'aucun changement** — `facture_id` y est déjà
+  nullable, et **2 lignes sur 17** le sont déjà en base. Un paiement sans devis n'a par nature
+  aucune facture : il s'enregistre **non rattaché**, son montant compte dans le total encaissé
+  dès l'encaissement, il apparaît dans la rubrique « Paiements non rattachés » de l'écran
+  Paiements (déjà présente, reformulée pour dire cette seconde origine) et une facture peut lui
+  être choisie plus tard. La migration `db/migration-20260918-lien-libre.sql` (appliquée le
+  18/09/2026, sauvegarde `sauvegarde_nw_liens_paiement_20260918`) ne touche **que**
+  `nw_liens_paiement` — `devis_id` devient nullable, `libelle`, `patient_id` et `patient_nom`
+  s'ajoutent — plus une troisième branche `'libre'` dans `nw_prochain_numero`, qui délivre les
+  références `L-AAAA-NNNNNN` par le même compteur atomique que les devis et les factures : la
+  numérotation ne se calcule toujours pas côté navigateur. ⚠ La branche est **installée**
+  (relue dans la définition déployée de la fonction), mais **aucune référence `L-` n'a encore
+  été tirée** : la fonction refuse le rôle de l'atelier par sa propre garde d'accès, et c'est
+  très bien ainsi. Ses trois lignes sont celles des branches devis et factures, au préfixe et
+  à la clé près ; la première vraie référence naîtra du premier lien créé par Veys.
+  ⚠ Conséquence assumée : le site exige la référence **dans** sa demande, elle est donc tirée
+  **avant** l'appel — un appel qui échoue laisse un **trou** dans la série `L-`. C'est sans
+  portée : cette série numérote des liens de paiement, pas des documents comptables, et un
+  numéro tiré sans lien ne se retrouve nulle part. Un trou dans `D-` ou `F-` serait, lui, une
+  autre affaire. Recette
+  `scripts/recette-lien-paiement.ts` (83 contrôles) plus un banc navigateur (17 contrôles :
+  trois champs, refus à 60 000 € **avant** tout appel, corps de requête sans aucun secret,
+  refus serveur faute de session, paiement non rattaché visible dans la liste).
+  ⚠ **Non vérifié** : que l'endpoint du site accepte une référence `L-2026-000001` dans son
+  champ `devis`. Le réseau sortant de l'atelier bloque `www.clinicnobel.com` ; ce point ne peut
+  se constater qu'au premier lien créé depuis le téléphone de Veys. Si le site la refuse, c'est
+  lui qui doit s'élargir — ce dépôt n'appelle jamais Paysera.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.

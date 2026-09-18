@@ -265,3 +265,78 @@ export const objetLien = (type: TypeLien, numero: string) =>
   `${type === 'acompte' ? 'Acompte' : 'Règlement'} devis ${numero} — Clinic Nobel`;
 
 export const libelleType = (type: string) => (type === 'acompte' ? 'acompte' : 'solde');
+
+/* =========================================================================
+   LIEN LIBRE — un paiement demandé SANS devis (18/09/2026)
+   -------------------------------------------------------------------------
+   Le besoin, dans les mots de Veys : « Quand je dois faire un paiement, même
+   si je n'ai pas de devis, je mets le nom du patient et je fais un paiement
+   par Paysera. » Des gens arrivent pour autre chose, ou ont déjà réglé leur
+   facture.
+
+   ⚠ Ce mode ROUVRE, sur décision explicite de Veys, la règle posée le 16/09
+   selon laquelle « le montant vient uniquement du devis enregistré ». Cette
+   règle avait un sujet : un devis. Sans devis, il n'y a rien d'autre à lire
+   que ce que Veys saisit. Le montant reste borné par le contrat du site
+   (1 à 50 000 €) et le geste reste réservé au rôle admin, comme le lien
+   depuis un devis. Ce qui n'a PAS changé : le lien depuis un devis continue
+   de prendre son montant dans le devis, jamais dans un champ libre.
+
+   ⚠ Aucun tarif d'intervention n'est écrit ici. Si un jour cet écran doit en
+   proposer un, il viendra du catalogue du CRM (`catalogue_interventions`,
+   lecture seule), comme partout ailleurs dans l'application.
+
+   La RÉFÉRENCE d'un lien libre est numérotée en base par
+   `nw_prochain_numero('libre')` → « L-2026-000001 ». Même forme qu'un numéro
+   de devis (une lettre, l'année, six chiffres), pour que le site qui la
+   reçoit dans son champ `devis` voie la forme qu'il connaît, et distincte
+   pour qu'on ne la confonde jamais avec un document. C'est elle qu'on
+   retrouve dans `nw_paiements.ref_num` quand le paiement est encaissé — donc
+   un paiement SANS `facture_id`, que l'écran Paiements montre déjà dans sa
+   rubrique « Paiements non rattachés ». */
+
+export const LONGUEUR_LIBELLE_MAX = 80;
+
+export interface DemandeLienLibre {
+  /** La fiche de la personne, quand elle est au fichier. */
+  patientId?: string | null;
+  /** Son nom — obligatoire, qu'il vienne de la fiche ou d'une saisie libre. */
+  patientNom: string;
+  montant: number;
+  /** Ce que la patiente lira sur la page de paiement. */
+  libelle: string;
+  langue: string;
+}
+
+/** Ce qui cloche dans une demande, en une phrase — ou `null` si elle est bonne. */
+export function refusDemandeLibre(d: Partial<DemandeLienLibre>, cur = '€'): string | null {
+  const nom = String(d.patientNom ?? '').trim();
+  if (!nom) return 'Indiquez la personne : choisissez une fiche, ou tapez un nom.';
+  const libelle = String(d.libelle ?? '').trim();
+  if (!libelle) return 'Indiquez un libellé court : c’est ce que la personne lira sur la page de paiement.';
+  if (libelle.length > LONGUEUR_LIBELLE_MAX) {
+    return `Le libellé est trop long (${libelle.length} caractères, ${LONGUEUR_LIBELLE_MAX} au maximum).`;
+  }
+  const m = Number(d.montant);
+  if (!isFinite(m) || m <= 0) return 'Indiquez le montant à demander.';
+  if (arrondi2(m) < MONTANT_MIN) return `Montant inférieur au minimum Paysera (${money(MONTANT_MIN, cur)}).`;
+  if (arrondi2(m) > MONTANT_MAX) return `Montant supérieur au plafond Paysera (${money(MONTANT_MAX, cur)}).`;
+  if (!estLangueLien(d.langue ?? LANGUE_DEFAUT)) return 'Langue non prise en charge par la page de paiement.';
+  return null;
+}
+
+/** Un lien sans devis ? C'est l'absence de devis qui le dit, pas son libellé. */
+export const estLienLibre = (l: Pick<LienPaiement, 'devisId'>) => !String(l.devisId || '').trim();
+
+/** L'objet envoyé au site pour un lien libre : ce que la patiente lit. */
+export const objetLibre = (libelle: string, patientNom: string) => {
+  const l = String(libelle || '').trim();
+  const n = String(patientNom || '').trim();
+  return n ? `${l} — ${n}` : l;
+};
+
+/** Les liens libres, du plus récent au plus ancien. */
+export function liensLibres(liens: LienPaiement[] | undefined): LienPaiement[] {
+  return [...(liens || [])].filter(estLienLibre)
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}

@@ -232,8 +232,17 @@ export interface Medecin {
    un lien neuf, valable 7 jours). Écrite par la route serveur seulement. */
 export interface LienPaiement {
   id: string;
+  /* VIDE pour un lien libre — un paiement demandé sans devis (18/09/2026).
+     `devisNumero` porte alors la RÉFÉRENCE « L-2026-000001 », qui reste ce
+     qu'on retrouve dans `nw_paiements.ref_num`. */
   devisId: string;
   devisNumero: string;
+  /** Ce que la patiente lit sur la page de paiement. Renseigné pour un lien libre. */
+  libelle: string;
+  /** La fiche de la personne, quand elle existe. Vide pour un nom libre. */
+  patientId: string;
+  /** Le nom tel que saisi — une personne pas encore au fichier n'a que ça. */
+  patientNom: string;
   /** acompte · paiement */
   type: string;
   montant: number;

@@ -16,9 +16,10 @@
    Usage : npx tsx scripts/recette-lien-paiement.ts */
 
 import {
-  derniersLiens, encaisse, estEuro, estLangueLien, estTypeLien, lienExpire, lienVivant, lireReponseSite,
-  messageErreurSite, MONTANT_MAX, MONTANT_MIN, objetLien, paiementsDuDevis, paiementsPaysera,
-  peutProposerLien, propositions, STATUTS_LIEN_POSSIBLE,
+  derniersLiens, encaisse, estEuro, estLangueLien, estLienLibre, estTypeLien, lienExpire, lienVivant,
+  liensLibres, lireReponseSite, LONGUEUR_LIBELLE_MAX, messageErreurSite, MONTANT_MAX, MONTANT_MIN,
+  objetLibre, objetLien, paiementsDuDevis, paiementsPaysera, peutProposerLien, propositions,
+  refusDemandeLibre, STATUTS_LIEN_POSSIBLE,
 } from '../lib/lienPaiement';
 import { PERM_LIEN_PAIEMENT, can, roleDefaultPerms } from '../lib/perms';
 import { profilAutorise, AccesRefuseError } from '../lib/acces';
@@ -35,7 +36,8 @@ const devis = (o: Partial<DocRecord> = {}): DocRecord =>
 const paiement = (o: Partial<Paiement> = {}): Paiement =>
   ({ id: 'pai_' + Math.random().toString(36).slice(2, 6), refId: null, refNum: 'D-2026-000123', patientId: 'p1', montant: 1500, date: '2026-09-10', mode: 'Paysera', type: 'acompte', devise: '€', note: 'DEVIS-D-2026-000123-A-1', ...o }) as Paiement;
 const lien = (o: Partial<LienPaiement> = {}): LienPaiement => ({
-  id: 'lien_' + Math.random().toString(36).slice(2, 6), devisId: 'dev_1', devisNumero: 'D-2026-000123', type: 'acompte', montant: 1500,
+  id: 'lien_' + Math.random().toString(36).slice(2, 6), devisId: 'dev_1', devisNumero: 'D-2026-000123',
+  libelle: '', patientId: 'p1', patientNom: 'Amina Benabderrahmane', type: 'acompte', montant: 1500,
   devise: 'EUR', reference: 'DEVIS-D-2026-000123-A-1', paymentUrl: 'https://bank.paysera.com/pay/abc', orderId: 'o1', linkId: 'l1',
   isTest: false, langue: 'fr', expiresAt: '2026-09-23T10:00:00Z', creePar: 'Veys Turan', createdAt: '2026-09-16T10:00:00Z', ...o,
 });
@@ -191,6 +193,44 @@ console.log('\n=== 11. Qui peut déclencher : la permission, portée par le seul
   v('chirurgien → refus explicite', refuse({ role: 'chirurgien' }));
   v('compte inactif → refus explicite', refuse({ statut: 'Inactif' }));
   v('coordinatrice active → autorisée à entrer, mais sans la permission', !refuse({ role: 'coordinatrice' }) && !can(profilAutorise(ligne({ role: 'coordinatrice' })), PERM_LIEN_PAIEMENT));
+}
+
+console.log('\n=== 12. Le lien LIBRE — un paiement sans devis (18/09/2026) ===');
+{
+  const bonne = { patientId: 'p1', patientNom: 'Laura Martins', montant: 450, libelle: 'Consultation et analyses', langue: 'fr' };
+  v('une demande complète passe', refusDemandeLibre(bonne) === null, String(refusDemandeLibre(bonne)));
+  v('sans personne → refus nommé', /personne/i.test(refusDemandeLibre({ ...bonne, patientNom: '  ' }) || ''),
+    refusDemandeLibre({ ...bonne, patientNom: '' }) || '');
+  v('sans libellé → refus nommé', /libellé/i.test(refusDemandeLibre({ ...bonne, libelle: '' }) || ''));
+  v('libellé trop long → refus chiffré',
+    /trop long/.test(refusDemandeLibre({ ...bonne, libelle: 'x'.repeat(LONGUEUR_LIBELLE_MAX + 1) }) || ''));
+  v(`JUMEAU : ${LONGUEUR_LIBELLE_MAX} caractères exactement passent`,
+    refusDemandeLibre({ ...bonne, libelle: 'x'.repeat(LONGUEUR_LIBELLE_MAX) }) === null);
+  v('montant absent, nul ou illisible → refus',
+    !!refusDemandeLibre({ ...bonne, montant: 0 }) && !!refusDemandeLibre({ ...bonne, montant: NaN })
+    && !!refusDemandeLibre({ ...bonne, montant: -5 }));
+  v('les BORNES du contrat s’appliquent aussi au lien libre (1 à 50 000 €)',
+    /minimum/.test(refusDemandeLibre({ ...bonne, montant: 0.5 }) || '')
+    && /plafond/.test(refusDemandeLibre({ ...bonne, montant: 60000 }) || ''));
+  v('JUMEAU : 1 € et 50 000 € exactement passent',
+    refusDemandeLibre({ ...bonne, montant: 1 }) === null && refusDemandeLibre({ ...bonne, montant: 50000 }) === null);
+  v('langue inconnue → refus', /Langue/.test(refusDemandeLibre({ ...bonne, langue: 'ru' }) || ''));
+  v('un NOM LIBRE suffit, sans fiche',
+    refusDemandeLibre({ ...bonne, patientId: null, patientNom: 'Une personne pas au fichier' }) === null);
+  v('l’objet porte le libellé ET le nom', objetLibre('Consultation', 'Laura Martins') === 'Consultation — Laura Martins');
+  v('l’objet se passe d’un nom vide', objetLibre('Consultation', '  ') === 'Consultation');
+
+  const libre = lien({ devisId: '', devisNumero: 'L-2026-000001', libelle: 'Consultation', patientId: '', patientNom: 'Une personne' });
+  const depuisDevis = lien();
+  v('un lien SANS devis est reconnu libre', estLienLibre(libre));
+  v('JUMEAU : un lien depuis un devis ne l’est pas', !estLienLibre(depuisDevis));
+  v('liensLibres ne retient que les libres', liensLibres([libre, depuisDevis]).length === 1);
+  v('la référence d’un lien libre est ce qu’on retrouve dans nw_paiements.ref_num',
+    paiementsPaysera([paiement({ refNum: 'L-2026-000001', type: 'paiement', refId: null })], 'L-2026-000001').length === 1);
+  v('un paiement libre encaissé n’a AUCUNE facture — donc « non rattaché »',
+    paiementsPaysera([paiement({ refNum: 'L-2026-000001', refId: null })], 'L-2026-000001')[0].refId === null);
+  v('le lien depuis un devis n’est pas touché : son montant vient toujours du devis',
+    propositions(devis(), [], [])[0].montant === 1500 && propositions(devis(), [], [])[1].montant === 8000);
 }
 
 const ko = r.filter(([, ok]) => !ok);

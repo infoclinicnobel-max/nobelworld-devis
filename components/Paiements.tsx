@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import { Confirm, Empty, Field, Input, Kpi, Modal, Select, useDirtyGuard } from './ui';
 import { Ico } from './icons';
 import { ListeAdaptative, Montant } from './ListeAdaptative';
+import { ModaleLienLibre } from './LienLibre';
 import { useApp } from './AppContext';
 import { fmtDate, money, normalizeDate, todayISO } from '@/lib/format';
-import { can } from '@/lib/perms';
+import { can, PERM_LIEN_PAIEMENT } from '@/lib/perms';
 import { factPayments, PAY_MODES, patientName, totalOf } from '@/lib/calc';
 import type { Paiement } from '@/lib/types';
 
@@ -145,6 +146,8 @@ export function PaiementsView() {
   const { data, user, remove, toast } = useApp();
   const cur = data.parametres.currency || '€';
   const [edit, setEdit] = useState<Partial<Paiement> | null>(null);
+  /* La modale « Nouveau lien de paiement » — un lien sans devis. */
+  const [lienLibre, setLienLibre] = useState(false);
   const [del, setDel] = useState<Paiement | null>(null);
   const canVoir = can(user, 'all') || can(user, 'paymentView') || can(user, 'paymentEdit');
   if (!canVoir)
@@ -225,6 +228,14 @@ export function PaiementsView() {
           </div>
         </div>
         <div className="sp" />
+        {/* Un lien de paiement SANS devis — réservé au même rôle que le lien
+            depuis un devis, et passant par la même route serveur. Le lien
+            depuis un devis, lui, ne change pas d'un caractère. */}
+        {can(user, PERM_LIEN_PAIEMENT) && (
+          <button className="btn" onClick={() => setLienLibre(true)}>
+            <Ico.send size={16} />Nouveau lien de paiement
+          </button>
+        )}
         {canAdd && (
           <button className="btn btn-primary" onClick={() => setEdit({})}>
             <Ico.plus size={16} />Ajouter un paiement
@@ -253,15 +264,18 @@ export function PaiementsView() {
           <div className="card-pad" style={{ paddingBottom: 0 }}>
             <h2 style={{ fontSize: 14, margin: 0 }}>Paiements non rattachés</h2>
             <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.55, margin: '6px 0 0' }}>
-              {orphelins.length} mouvement(s) sans facture liée — la facture d&apos;origine a été supprimée. Les
-              montants restent comptabilisés dans le total encaissé ; rattachez-les à une facture existante en les
-              modifiant.
+              {orphelins.length} mouvement(s) sans facture liée — soit la facture d&apos;origine a été supprimée,
+              soit le paiement vient d&apos;un <b>lien de paiement sans devis</b>, qui n&apos;a par nature aucune
+              facture. Les montants sont comptabilisés dans le total encaissé dès l&apos;encaissement ;{' '}
+              <b>le rattachement comptable peut attendre</b> : ouvrez le paiement et choisissez-lui une facture
+              quand elle existe.
             </p>
           </div>
           <ListeAdaptative colonnes={COLONNES} lignes={orphelins.map(ligne)} cadre={false} />
         </div>
       )}
 
+      {lienLibre && <ModaleLienLibre onClose={() => setLienLibre(false)} />}
       {edit && <PaymentLineEditor payment={edit} onClose={() => setEdit(null)} />}
       {del && (
         <Confirm

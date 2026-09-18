@@ -287,6 +287,9 @@ export function rowToLienPaiement(r: Row): LienPaiement {
     id: str(r.id),
     devisId: str(r.devis_id),
     devisNumero: str(r.devis_numero),
+    libelle: str(r.libelle),
+    patientId: str(r.patient_id),
+    patientNom: str(r.patient_nom),
     type: str(r.type),
     montant: num(r.montant),
     devise: str(r.devise) || 'EUR',
@@ -305,8 +308,13 @@ export function rowToLienPaiement(r: Row): LienPaiement {
 export function lienPaiementToRow(l: Omit<LienPaiement, 'createdAt'>): Row {
   return {
     id: l.id,
-    devis_id: l.devisId,
+    /* NULL, pas chaîne vide : la colonne est nullable depuis le 18/09 et
+       c'est `devis_id is null` qui distingue un lien libre. */
+    devis_id: l.devisId || null,
     devis_numero: l.devisNumero,
+    libelle: l.libelle || '',
+    patient_id: l.patientId || null,
+    patient_nom: l.patientNom || '',
     type: l.type,
     montant: num(l.montant),
     devise: l.devise || 'EUR',

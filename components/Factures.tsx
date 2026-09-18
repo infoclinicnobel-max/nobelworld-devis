@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Confirm, Drawer, Empty, Field, Input, Kpi, Modal, Select, StatusBadge, Textarea, useDirtyGuard,
   useNavOverlay,
@@ -241,11 +241,21 @@ export function FactureCreateModal({
 }
 
 export function FacturesView() {
-  const { data, user, remove, toast } = useApp();
+  const { data, user, remove, toast, cible, cibleAtteinte } = useApp();
   const [detail, setDetail] = useState<DocRecord | null>(null);
   const [del, setDel] = useState<DocRecord | null>(null);
   const [create, setCreate] = useState(false);
   const [editor, setEditor] = useState<DocRecord | null>(null);
+
+  /* Arrivée depuis la recherche : on ouvre la facture par son identifiant. */
+  useEffect(() => {
+    if (!cible || cible.type !== 'facture') return;
+    const f = data.factures.find((x) => x.id === cible.id);
+    if (f) setDetail(f);
+    else toast('Facture introuvable dans les données chargées.', 'err');
+    cibleAtteinte();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cible]);
   /* Qui peut créer une facture peut la corriger — il n'existe pas de
      permission d'édition propre aux factures, et en inventer une pour ce lot
      élargirait le modèle de droits sans décision. */

@@ -30,9 +30,19 @@ import type { PlanAgenda } from '@/lib/agenda';
    DEVIS
    ------------------------------------------------------------------------- */
 export function DevisView() {
-  const { data, user, save, remove, nextNumber, toast, go } = useApp();
+  const { data, user, save, remove, nextNumber, toast, go, cible, cibleAtteinte } = useApp();
   const [editor, setEditor] = useState<DocRecord | null>(null); // {} ou devis existant
   const [viewDoc, setViewDoc] = useState<DocRecord | null>(null);
+
+  /* Arrivée depuis la recherche : on ouvre le devis par son identifiant. */
+  useEffect(() => {
+    if (!cible || cible.type !== 'devis') return;
+    const d = data.devis.find((x) => x.id === cible.id);
+    if (d) setViewDoc(d);
+    else toast('Devis introuvable dans les données chargées.', 'err');
+    cibleAtteinte();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cible]);
   const [del, setDel] = useState<DocRecord | null>(null);
   const [rapport, setRapport] = useState<{ r: ResultatRemontee; numero: string } | null>(null);
   const [filter, setFilter] = useState('tous');

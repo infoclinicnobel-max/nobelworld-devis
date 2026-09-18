@@ -5,6 +5,15 @@ import type { AppData, Collection } from '@/lib/types';
 import type { AppUser } from '@/lib/perms';
 import type { Settings } from '@/lib/defaults';
 
+/* Le dossier à OUVRIR en arrivant sur une vue — par son IDENTIFIANT, jamais
+   par sa position dans une liste (la liste de la vue n'est ni celle des
+   résultats de recherche, ni dans le même ordre). Posé par `go(vue, cible)`,
+   consommé une fois par la vue qui l'ouvre, puis effacé (`cibleAtteinte`). */
+export interface Cible {
+  type: 'patient' | 'devis' | 'facture';
+  id: string;
+}
+
 export interface AppCtxValue {
   user: AppUser;
   data: AppData;
@@ -14,7 +23,10 @@ export interface AppCtxValue {
   nextNumber: (type: 'devis' | 'facture') => Promise<string>;
   saveSettings: (s: Settings) => Promise<void>;
   log: (message: string) => Promise<void>;
-  go: (view: string) => void;
+  /** Navigue vers une vue ; avec `cible`, y ouvre ce dossier et efface la recherche en cours. */
+  go: (view: string, cible?: Cible) => void;
+  cible: Cible | null;
+  cibleAtteinte: () => void;
   registerOverlay: (close: () => void) => number;
   unregisterOverlay: (id: number) => void;
 }

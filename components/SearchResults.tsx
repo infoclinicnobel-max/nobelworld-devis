@@ -11,6 +11,11 @@ import { patientName, totalOf } from '@/lib/calc';
    RECHERCHE GLOBALE
    La recherche par téléphone doit fonctionner que le numéro soit saisi avec
    ou sans espaces : on compare aussi les chiffres seuls, des deux côtés.
+
+   Le clic sur un résultat transmet l'IDENTIFIANT du dossier (`go(vue,
+   cible)`), jamais sa position : la vue d'arrivée n'affiche ni la même liste
+   ni le même ordre. Mesuré le 18/09/2026 : sans cible, aucun clic n'ouvrait
+   de fiche — la vue changeait de titre sous des résultats restés affichés.
    ------------------------------------------------------------------------- */
 export function SearchResults({ q, onClear }: { q: string; onClear: () => void }) {
   const { data, go } = useApp();
@@ -57,7 +62,7 @@ export function SearchResults({ q, onClear }: { q: string; onClear: () => void }
           <table>
             <tbody>
               {pats.map((p) => (
-                <tr key={p.id} className="clickable" onClick={() => go('patients')}>
+                <tr key={p.id} className="clickable" onClick={() => go('patients', { type: 'patient', id: p.id })}>
                   <td className="t-strong">{patientName(p)}</td>
                   <td className="muted">{p.telephone}</td>
                   <td className="muted">{p.pays}</td>
@@ -75,7 +80,7 @@ export function SearchResults({ q, onClear }: { q: string; onClear: () => void }
           <table>
             <tbody>
               {dvs.map((d) => (
-                <tr key={d.id} className="clickable" onClick={() => go('devis')}>
+                <tr key={d.id} className="clickable" onClick={() => go('devis', { type: 'devis', id: String(d.id || '') })}>
                   <td className="t-strong">{d.numero}</td>
                   <td><StatusBadge s={d.statut} doc="devis" /></td>
                   <td className="tnum">{money(totalOf(d), data.parametres.currency || '€')}</td>
@@ -93,7 +98,7 @@ export function SearchResults({ q, onClear }: { q: string; onClear: () => void }
           <table>
             <tbody>
               {fcs.map((f) => (
-                <tr key={f.id} className="clickable" onClick={() => go('factures')}>
+                <tr key={f.id} className="clickable" onClick={() => go('factures', { type: 'facture', id: String(f.id || '') })}>
                   <td className="t-strong">{f.numero}</td>
                   <td><StatusBadge s={f.statut} /></td>
                   <td className="tnum">{money(totalOf(f), data.parametres.currency || '€')}</td>

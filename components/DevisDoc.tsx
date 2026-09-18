@@ -11,6 +11,7 @@ import {
 } from '@/lib/defaults';
 import { can, userLabel, type AppUser } from '@/lib/perms';
 import { resoudreLibelle, type Correspondance } from '@/lib/catalogue';
+import { blocBancaire, groupesIban } from '@/lib/banque';
 import {
   devisTotal, estRetenue, factPayments, optionsADecider, optsSum, patientName, remiseMontant,
   totalOf, totalSiToutesOptions,
@@ -106,6 +107,27 @@ export function findConseiller(users: AppUser[] | undefined, createdBy: unknown)
   );
 }
 
+/* L'IBAN, par groupes de quatre — avec de VRAIS espaces entre les groupes.
+
+   Mesuré au banc le 18/09 : rendus comme des cases d'une boîte flex écartées
+   par `gap`, les groupes étaient bien espacés à l'œil mais le texte, lui, ne
+   portait aucun espace — un copier-coller depuis le PDF, ou une extraction
+   automatique, rendait « LT693500010019147464 » d'un bloc. L'espace est donc
+   un vrai caractère, et chaque groupe reste insécable : le retour à la ligne
+   ne peut tomber QUE sur ces espaces, jamais au milieu de quatre chiffres. */
+export function Iban({ valeur }: { valeur: string }) {
+  return (
+    <>
+      {groupesIban(valeur).map((g, k) => (
+        <React.Fragment key={k}>
+          {k > 0 ? ' ' : ''}
+          <span className="g">{g}</span>
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 export function DevisDoc({
   record, settings, patient, type, paid, editable, on,
 }: {
@@ -122,14 +144,12 @@ export function DevisDoc({
   const isF = type === 'facture';
   const E = !!editable;
 
-  // Coordonnées bancaires photographiées dans le document à sa création ;
-  // un ancien document sans photographie affiche celles des paramètres (comportement historique).
-  const bq = {
-    nom: record.bqNom != null ? record.bqNom : s.bankName || '',
-    adresse: record.bqAdresse != null ? record.bqAdresse : s.bankAddress || '',
-    iban: record.bqIban != null && record.bqIban !== '' ? record.bqIban : s.iban || '',
-    bic: record.bqBic != null && record.bqBic !== '' ? record.bqBic : s.bic || '',
-  };
+  /* Coordonnées bancaires — cinq lignes entières depuis le 18/09/2026, ou le
+     bloc d'origine intact pour un document émis sur un AUTRE compte. La règle
+     et son motif vivent dans lib/banque.ts ; `bloc.photo` porte exactement
+     les valeurs photographiées d'avant, avec la même précédence. */
+  const bloc = blocBancaire(record, s);
+  const bq = bloc.photo;
   const set = (k: string, v: unknown) => on && on.set(k, v);
   const app = useAppMaybe();
   const _u = app && app.user;
@@ -303,20 +323,40 @@ export function DevisDoc({
               <br />
             </>
           )}
-          {(bq.nom || bq.adresse) && (
-            <span style={{ color: 'var(--muted)' }}>
-              {bq.nom}
-              {bq.nom && bq.adresse ? ' — ' : ''}
-              {bq.adresse}
-              <br />
-            </span>
-          )}
-          {(bq.iban || bq.bic) && (
-            <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
-              {bq.iban ? 'IBAN ' + bq.iban : ''}
-              {bq.iban && bq.bic ? ' · ' : ''}
-              {bq.bic ? 'BIC ' + bq.bic : ''}
-            </span>
+          {bloc.forme === 'cinq' ? (
+            /* Cinq lignes, chacune entière : rien de tronqué, rien d'abrégé,
+               et chaque groupe de quatre de l'IBAN est insécable. */
+            <div className="bankbox">
+              {bloc.lignes.map((l) => (
+                <div className="bl" key={l.libelle}>
+                  <span className="bk">{l.libelle}</span>
+                  <span className={'bv' + (l.iban ? ' iban' : '')}>
+                    {l.iban ? <Iban valeur={l.valeur} /> : l.valeur}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Document émis sur un compte retiré : son bloc d'origine, mot
+               pour mot. On ne réécrit pas le bénéficiaire d'un virement déjà
+               parti — voir lib/banque.ts. */
+            <>
+              {(bq.nom || bq.adresse) && (
+                <span style={{ color: 'var(--muted)' }}>
+                  {bq.nom}
+                  {bq.nom && bq.adresse ? ' — ' : ''}
+                  {bq.adresse}
+                  <br />
+                </span>
+              )}
+              {(bq.iban || bq.bic) && (
+                <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
+                  {bq.iban ? 'IBAN ' + bq.iban : ''}
+                  {bq.iban && bq.bic ? ' · ' : ''}
+                  {bq.bic ? 'BIC ' + bq.bic : ''}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>

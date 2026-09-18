@@ -43,8 +43,17 @@ export const DEFAULT_SETTINGS = {
   whatsapp: '+90 ___ ___ __ __',
   email: 'contact@clinicnobel.world',
   website: 'www.clinicnobel.world',
+  /* ---- Bloc bancaire des documents (cinq lignes, 18/09/2026) ----
+     `bankName` est la BANQUE (« Paysera LT, UAB »), pas le titulaire :
+     il portait « BUNQ: VEYSEL TURAN », le nom d'une personne, sur un compte
+     tenu par la société. `bankBeneficiary` est le titulaire, et il a son
+     propre réglage parce qu'il n'est pas la raison sociale par nature.
+     Repli documenté : `company` pour le bénéficiaire, `bankAddress` pour le
+     pays — les deux portaient déjà la bonne valeur en base. */
+  bankBeneficiary: '',
   bankName: '',
   bankAddress: '',
+  bankCountry: '',
   iban: '',
   bic: '',
   vat: '',

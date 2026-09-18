@@ -341,6 +341,49 @@ Autres invariants :
   devis, factures) retrouve le dossier dans **ses** données par `id` puis consomme la cible
   (`cibleAtteinte`). Un dossier introuvable se dit, ne se devine pas. Ne jamais transmettre
   un rang : la liste de la vue n'est ni celle des résultats ni dans le même ordre.
+- **Le bloc bancaire dit cinq lignes entières, et un document déjà émis ne change pas de
+  compte (18/09/2026).** Le compte est chez **Paysera LT, UAB**, au nom de la société
+  **Clinic NobelWorld** — pas au nom d'une personne. `bankName` portait « BUNQ: VEYSEL
+  TURAN » : le nom d'un particulier, et celui d'une autre banque. Le bloc affichait deux
+  lignes serrées en 12,5 px, plus petit que le corps du document (13 px). Il affiche
+  désormais **Bénéficiaire · IBAN · BIC / SWIFT · Banque · Pays**, en 13,5 px, sans
+  troncature (la recette interdit `text-overflow`, `overflow:hidden` et toute largeur figée
+  sur la valeur), et **l'IBAN se rend par groupes de quatre insécables séparés par de VRAIS
+  espaces** : un retour à la ligne ne peut tomber qu'entre deux groupes, et l'IBAN copié
+  depuis le PDF sort « LT69 3500 0100 1914 7464 » — mesuré, le rendu par `gap` d'une boîte
+  flex donnait les chiffres collés à l'extraction. **La valeur stockée n'est jamais
+  réécrite** : `formaterIban` n'ajoute que des espaces, et `cleIban` prouve l'égalité dans
+  les deux sens.
+- ⚠ **Le bloc bancaire suit l'identité du COMPTE, pas la date.** Les 48 documents en base
+  portent **cinq comptes photographiés différents** (relevé du 18/09 : deux comptes BUNQ
+  français, un QNB turc, le compte Paysera, et 13 documents sans aucune photographie). Un
+  document dont l'IBAN photographié est absent, vide, ou **égal** à celui des Paramètres
+  reçoit les cinq lignes corrigées ; un document sur un **autre** compte garde son bloc
+  d'origine, mot pour mot — on ne réécrit pas le bénéficiaire d'un virement déjà parti.
+  Cette règle se protège seule : les libellés des Paramètres ne s'affichent que devant
+  l'IBAN des Paramètres, si bien que le jour où le compte change, les documents de l'ancien
+  repassent d'eux-mêmes en forme historique. Corollaire mesuré : un document sur un autre
+  compte **n'emprunte plus rien** aux Paramètres — les onze documents BUNQ au BIC
+  photographié vide affichaient, par le repli d'origine, un IBAN français sous le BIC
+  lituanien de Paysera, un couple qui n'existe dans aucune banque.
+- ⚠ **Onze documents déjà émis portent un IBAN amputé** — D-2026-000041 à 000047 et
+  F-2026-000026, 000029, 000030, 000033 : « FR76 2763 3121 2904 8317 894 », 23 caractères
+  au lieu de 27, le groupe « 0491 » perdu, BIC vide. Aucun virement n'y est possible. Ce lot
+  ne les réécrit PAS (aucune écriture dans `nw_devis` ni `nw_factures`) ; il **signale** une
+  longueur d'IBAN invalide là où elle se corrige — l'écran Paramètres → Banque, qui montre
+  aussi l'aperçu du bloc par la même fonction et la même feuille de style que le document.
+  Un pays hors table ne déclenche rien : on ne crie pas au loup. La seule écriture du lot
+  est `nw_parametres`, clé `societe`, **trois clés** sur 47 (`bankName` corrigé,
+  `bankBeneficiary` et `bankCountry` ajoutés), par fusion `jsonb` — `iban` et `bic` relus
+  inchangés au caractère près, sauvegarde préalable `sauvegarde_nw_parametres_20260918`
+  (RLS activé, zéro politique). Règles pures dans `lib/banque.ts`, migration
+  `db/migration-20260918-bloc-bancaire.sql`, recette `scripts/recette-bloc-bancaire.ts`
+  (64 contrôles) plus un banc navigateur qui mesure la police, l'absence de rognage et
+  l'insécabilité des groupes, et produit les deux PDF de test.
+  ⚠ **Conséquence sur la recette PDF du 10 août** : « 880 flux PDF sur 880 identiques » à
+  `index.html` ne vaut plus pour le bloc bancaire de D-2026-000011 — ce devis n'a aucune
+  coordonnée photographiée, il prend donc les cinq lignes. C'est l'objet même du lot ; le
+  reste du document est inchangé.
 - **La comparaison est normalisée, l'écriture ne l'est pas.** « Dr Anvar Ahmedov » et
   « Anvar Ahmedov » désignent le même praticien : les traiter comme un désaccord ferait
   crier l'alerte sur la moitié du fichier, et plus personne ne la lirait.
@@ -371,6 +414,7 @@ npx tsx scripts/recette-agenda.ts                     # 26 contrôles sur les tr
 npx tsx scripts/garde-agenda.ts                       # échoue si la surface d'écriture de rdvs s'élargit
 npx tsx scripts/recette-caisse.ts                     # 49 contrôles : sens/lieu, soldes par devise, arrêtés, gardes d'écriture
 npx tsx scripts/recette-lien-paiement.ts              # 65 contrôles : montant depuis le devis, statuts, mémoire du lien, statut lu dans nw_paiements, permission
+npx tsx scripts/recette-bloc-bancaire.ts              # 64 contrôles : IBAN identique aux espaces près, groupes insécables, cinq lignes, compte historique, garde de style
 npx tsx scripts/rattrapage-fiches.ts instantane.json         # les cinq listes du retard
 npx tsx scripts/rattrapage-fiches.ts instantane.json --sql   # les UPDATE gardés, imprimés
 ```

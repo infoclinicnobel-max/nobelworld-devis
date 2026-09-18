@@ -7,6 +7,9 @@ import { useApp } from './AppContext';
 import { supabase } from '@/lib/supabase/client';
 import { DEFAULT_SETTINGS, PDF_TEXTS, type Settings } from '@/lib/defaults';
 import { can, PERMS, READ_KEYS, roleDefaultPerms, ROLES, userLabel } from '@/lib/perms';
+import {
+  blocBancaire, cleIban, ecartLongueurIban, groupesIban, ibanPlausible,
+} from '@/lib/banque';
 
 /* =========================================================================
    PARAMÈTRES
@@ -38,6 +41,10 @@ export function ParametresView() {
     </label>
   );
   const [pdfSub, setPdfSub] = useState('devis');
+  /* L'aperçu est rendu par la MÊME fonction et la MÊME feuille de style que
+     le document : ce qu'on voit ici est ce que la patiente lira. Un document
+     neuf n'a rien de photographié, d'où l'objet vide. */
+  const apercuBloc = blocBancaire({}, s);
   // Accès à l'onglet Connexion : administrateur (all) ou permission explicite
   const canConn = can(user, 'all') || can(user, 'connexionView');
   // Consultation des permissions : administrateur ou droit usersManage
@@ -144,15 +151,36 @@ export function ParametresView() {
 
       {tab === 'banque' && (
         <div className="card card-pad">
+          {/* Ces cinq valeurs sont les cinq lignes du bloc bancaire des devis
+              et des factures, dans cet ordre. Le BÉNÉFICIAIRE est le titulaire
+              du compte : il n'est pas le nom de la banque, et c'est la
+              confusion qui avait mis « BUNQ: VEYSEL TURAN » — le nom d'une
+              personne — sur un compte tenu par la société. */}
           <div className="row2">
-            <Field label="Nom de la banque">
+            <Field label="Bénéficiaire" hint="titulaire du compte, tel qu'il doit être saisi par la patiente">
+              <Input
+                value={String(s.bankBeneficiary || '')}
+                onChange={(e) => set('bankBeneficiary', e.target.value)}
+                placeholder={String(s.company || 'Clinic NobelWorld')}
+              />
+            </Field>
+            <Field label="Nom de la banque" hint="la banque, pas le titulaire">
               <Input
                 value={String(s.bankName || '')}
                 onChange={(e) => set('bankName', e.target.value)}
-                placeholder="Ex. QNB Finansbank"
+                placeholder="Ex. Paysera LT, UAB"
               />
             </Field>
-            <Field label="Adresse de la banque">
+          </div>
+          <div className="row2">
+            <Field label="Pays de la banque">
+              <Input
+                value={String(s.bankCountry || '')}
+                onChange={(e) => set('bankCountry', e.target.value)}
+                placeholder="Ex. Lituanie"
+              />
+            </Field>
+            <Field label="Adresse de la banque" hint="(optionnelle, sert de repli au pays)">
               <Input
                 value={String(s.bankAddress || '')}
                 onChange={(e) => set('bankAddress', e.target.value)}
@@ -163,6 +191,47 @@ export function ParametresView() {
           <div className="row2">
             <Field label="IBAN"><Input value={s.iban} onChange={(e) => set('iban', e.target.value)} /></Field>
             <Field label="BIC"><Input value={s.bic} onChange={(e) => set('bic', e.target.value)} /></Field>
+          </div>
+          {/* Un IBAN amputé d'un groupe de quatre est indétectable à l'œil et
+              rend tout virement impossible. Onze documents déjà émis en
+              portent un (relevé du 18/09) : le contrôle est là pour que la
+              faute ne reparte pas à la prochaine saisie. Il SIGNALE, il ne
+              refuse rien — un pays hors table reste accepté sans un mot. */}
+          {!ibanPlausible(s.iban) && (
+            <div
+              style={{
+                background: '#fdecea', border: '1px solid #f3b9b1', color: '#8a2a20', borderRadius: 10,
+                padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, marginTop: 2,
+              }}
+            >
+              ⚠ Cet IBAN compte <b>{cleIban(s.iban).length}</b> caractères, or un IBAN{' '}
+              « {cleIban(s.iban).slice(0, 2)} » en compte{' '}
+              <b>{cleIban(s.iban).length - ecartLongueurIban(s.iban)}</b> :{' '}
+              {ecartLongueurIban(s.iban) < 0
+                ? `il en manque ${-ecartLongueurIban(s.iban)}, probablement un groupe de quatre.`
+                : `il y en a ${ecartLongueurIban(s.iban)} de trop.`}{' '}
+              Vérifiez avant d&apos;enregistrer : un virement sur un IBAN incomplet est impossible.
+            </div>
+          )}
+          <div className="ibanapercu">
+            <span className="lbl">Aperçu sur le document</span>
+            <div className="bankbox">
+              {apercuBloc.lignes.map((l) => (
+                <div className="bl" key={l.libelle}>
+                  <span className="bk">{l.libelle}</span>
+                  <span className={'bv' + (l.iban ? ' iban' : '')}>
+                    {l.iban
+                      ? groupesIban(l.valeur).map((g, k) => <span className="g" key={k}>{g}</span>)
+                      : l.valeur}
+                  </span>
+                </div>
+              ))}
+              {!apercuBloc.lignes.length && (
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  Renseignez au moins le bénéficiaire et l&apos;IBAN.
+                </span>
+              )}
+            </div>
           </div>
           <div className="row2">
             <Field label="N° TVA" hint="(optionnel)">

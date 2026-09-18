@@ -342,6 +342,35 @@ details.pdfopts[open] summary{margin-bottom:8px}
 .doc .paybox .l.big{border-top:2px solid var(--ink);margin-top:6px;padding-top:9px;font-size:16px;font-weight:700;color:var(--ink);font-family:var(--serif)}
 .doc .paybox .l.big .v{color:var(--blue-deep);font-size:20px}
 .doc .paybox .note{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.55;border-top:1px dashed var(--line);padding-top:8px}
+/* ---- Bloc bancaire : cinq lignes entières (18/09/2026) ----
+   Contraintes tenues ICI, et vérifiées au banc (recette-bloc-bancaire) :
+   · police 13.5px, soit au moins celle du corps du document (.doc = 13px) ;
+   · AUCUNE troncature : ni overflow:hidden, ni text-overflow, ni largeur fixe
+     sur la valeur — une valeur trop longue passe à la ligne, elle ne se coupe
+     jamais ;
+   · l'IBAN est rendu par groupes de quatre INSÉCABLES (.g) : le retour à la
+     ligne ne peut tomber qu'ENTRE deux groupes ;
+   · le bloc ne se coupe pas entre deux pages à l'impression. */
+.bankbox{margin-top:8px;border-top:1px dashed var(--line);padding-top:9px;font-size:13.5px;line-height:1.6;color:var(--ink);break-inside:avoid;page-break-inside:avoid}
+.bankbox .bl{display:grid;grid-template-columns:auto 1fr;column-gap:12px;align-items:baseline;padding:1px 0}
+.bankbox .bk{min-width:106px;color:var(--muted);font-weight:600;white-space:nowrap}
+.bankbox .bk::after{content:' :'}
+.bankbox .bv{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+/* Flux en ligne normal, PAS de flex : dans une boîte flex, les espaces entre
+   les groupes seraient avalés, et l'IBAN copié depuis le PDF sortirait d'un
+   seul bloc. Les espaces sont de vrais caractères ; ce sont eux, et eux seuls,
+   qui offrent un point de retour à la ligne. */
+.bankbox .bv.iban{letter-spacing:.02em;white-space:normal;overflow-wrap:normal}
+.bankbox .bv.iban .g{white-space:nowrap;overflow-wrap:normal;word-break:keep-all}
+/* Aperçu dans Paramètres → Banque : MÊME fonction, MÊME feuille de style que
+   le document, pour que ce qui est montré soit ce que la patiente lira. */
+.ibanapercu{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:10px 14px;margin:2px 0 14px}
+.ibanapercu .lbl{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);font-weight:700}
+.ibanapercu .bankbox{margin-top:6px;border-top:none;padding-top:0}
+/* Sur une FACTURE, la note de paiement ne s'affiche pas : le bloc bancaire est
+   alors le premier enfant de .note, et son filet doublait celui de la note —
+   deux pointillés avec du vide entre eux. Un seul séparateur suffit. */
+.doc .paybox .note>.bankbox:first-child{border-top:none;margin-top:0;padding-top:0}
 .doc ul.implist{list-style:none;padding:0;margin:0;font-size:13px;line-height:1.55}
 .doc ul.implist li{padding-left:19px;position:relative;color:#36414f}
 .doc ul.implist li::before{content:"•";position:absolute;left:3px;color:var(--gold);font-weight:700}
